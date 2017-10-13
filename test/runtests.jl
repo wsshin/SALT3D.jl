@@ -1,5 +1,5 @@
 using SALT3D
 using Base.Test
 
-# write your own tests here
-@test 1 == 2
+include("salteq.jl")
+include("lasing.jl")
