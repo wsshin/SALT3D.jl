@@ -78,13 +78,16 @@ gain′(ω::Number, ωₐ::Number, γ⟂::Number) = -γ⟂ / (ω - ωₐ + im * 
 
 # Evaluate the hole-burning term 1 + ∑a²|ψ|².
 function hole_burning!(hb::AbsVecFloat,  # output
-                       a::AbsVecReal,  # vector of amplitudes of unnormalized eigenmodes
+                       a²::AbsVecReal,  # vector of squared amplitudes of unnormalized eigenmodes
                        ψ::AbsVec{<:AbsVecNumber})  # vector of normalized eigenmodes
     hb .= 1  # initialize
-    for m = 1:length(a)
-        # info("a[$m] = $(a[m]), ‖ψ[$m]‖ = $(norm(ψ[m]))")
-        hb .+=  a[m]^2 .* abs2.(ψ[m])
+    for m = 1:length(a²)
+        if a²[m] > 0
+            # info("a²[$m] = $(a²[m]), ‖ψ[$m]‖ = $(norm(ψ[m]))")
+            hb .+=  a²[m] .* abs2.(ψ[m])
+        end
     end
+    # info("‖hb‖ = $(norm(hb))")
 
     return nothing
 end
@@ -96,6 +99,7 @@ function create_A!(A::AbsMatComplex,  # output; must have same nonzero entry pat
                    ω::Number,  # angular frequency
                    ε::AbsVecNumber)  # effective ε
     A .= CC  # initialize; works for sparse matrices with same nonzero entry pattern
+    # info("‖CC‖₁ = $(norm(CC,1)), ω = $ω, ‖ε‖ = $(norm(ε))")
     for i = 1:length(ε)
         A[i,i] -= ω^2 * ε[i]
     end

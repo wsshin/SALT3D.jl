@@ -1,3 +1,7 @@
+# Unlike lasing equations, nonlasing equations are not coupled between nonlasing modes, so
+# all the functions are for a single nonlasing mode, and therefore they always take a mode
+# index.
+
 export NonlasingSol, NonlasingVar
 export init_nlvar!, norm_nleq, update_nlsol!
 
@@ -6,6 +10,8 @@ mutable struct NonlasingSol{VC<:AbsVecComplex}  # VC can be PETSc vector
     ω::VecComplex  # M complex numbers: frequencies of modes (M = # of nonlasing modes)
     ψ::Vector{VC}  # M complex vectors: normalized modes
     iₐ::VecInt  # M integers: row indices where amplitudes are measured
+    act::VecBool  # act[m] is true if mode m is active (i.e., nonlasing)
+    m_act::VecInt  # vector of active (i.e., nonlasing) mode indices
     function NonlasingSol{VC}(ω::AbsVecNumber,
                               ψ::AbsVec{<:AbsVecNumber},
                               iₐ::AbsVecInteger) where {VC<:AbsVecComplex}
@@ -23,7 +29,7 @@ mutable struct NonlasingSol{VC<:AbsVecComplex}  # VC can be PETSc vector
             end
         end
 
-        return new(ω, ψ, iₐ)
+        return new(ω, ψ, iₐ, fill(true,M), VecInt(1:M))
     end
 end
 NonlasingSol(ω::AbsVecNumber, ψ::AbsVec{VC}, iₐ::AbsVecInteger) where {VC<:AbsVecComplex} =
@@ -31,17 +37,18 @@ NonlasingSol(ω::AbsVecNumber, ψ::AbsVec{VC}, iₐ::AbsVecInteger) where {VC<:A
 NonlasingSol(ω::AbsVecNumber, Ψ::AbsMatComplex, iₐ::AbsVecInteger) =
     (M = length(ω); NonlasingSol(ω, [Ψ[:,m] for m = 1:M], iₐ))
 
-NonlasingSol(ω::AbsVecNumber, ψ::AbsVec{<:AbsVecComplex}) = NonlasingSol(ω, ψ, indmax.(map(x->abs.(x), ψ)))  # why no indmax(abs, array)?
+NonlasingSol(ω::AbsVecNumber, ψ::AbsVec{<:AbsVecComplex}) = NonlasingSol(ω, ψ, indmax.(abs, ψ))
 NonlasingSol(ω::AbsVecNumber, Ψ::AbsMatComplex) = (M = length(ω); NonlasingSol(ω, [Ψ[:,m] for m = 1:M]))
 
 
 # To do: check if the following works for vtemp of PETSc vector type.
 NonlasingSol(vtemp::AbsVec,  # template vector with N entries
              M::Integer) =
-    NonlasingSol(VecComlpex(M), [similar(vtemp,CFloat) for m = 1:M], VecInt(M))
+    NonlasingSol(zeros(CFloat,M), [similar(vtemp,CFloat).=0 for m = 1:M], VecInt(M))
 NonlasingSol(N::Integer, M::Integer) = NonlasingSol(VecFloat(N), M)
 
 Base.length(nlsol::NonlasingSol) = length(nlsol.ψ)
+
 function Base.normalize!(nlsol::NonlasingSol)
     for m = 1:length(nlsol)
         ψ = nlsol.ψ[m]
@@ -49,6 +56,25 @@ function Base.normalize!(nlsol::NonlasingSol)
         ψ ./= ψ[iₐ]  # make ψ[iₐ] = 1
     end
 end
+
+function Base.push!(nlsol::NonlasingSol, m::Integer)
+    M = length(nlsol)
+    nlsol.act[m] = true
+    nlsol.m_act = (1:M)[nlsol.act]
+
+    return nothing
+end
+
+function Base.pop!(nlsol::NonlasingSol, m::Integer)
+    M = length(nlsol)
+    nlsol.act[m] = false
+    nlsol.m_act = (1:M)[nlsol.act]
+
+    nlsol.ψ[m] .= 0  # good for compressing data when writing in file
+
+    return nothing
+end
+
 
 # nonlasing reduced bar: D
 # nonlasing modal var: γ, γ′, εeff, A

@@ -10,6 +10,7 @@ const AbsVec = AbstractVector
 const AbsMat = AbstractMatrix
 const AbsArr = AbstractArray
 
+const VecBool = Vector{Bool}
 const VecInt = Vector{Int}
 const VecFloat = Vector{Float}
 const VecComplex = Vector{CFloat}
@@ -31,9 +32,11 @@ const AbsMatComplex = AbsMat{CFloat}
 const AbsMatReal = AbsMat{<:Real}
 const AbsMatNumber = AbsMat{<:Number}
 
+include("base.jl")
 include("anderson.jl")
 include("salteq.jl")
 include("lasing.jl")
 include("nonlasing.jl")
+include("switching.jl")
 
 end # module
