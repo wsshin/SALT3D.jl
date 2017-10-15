@@ -52,106 +52,142 @@ CC = Cv * Cu
 Aₙₗ = spdiagm(param.εc) \ copy(CC)  # A for nonlasing mode
 Ω², Ψ = eigs(Aₙₗ, nev=8, sigma=(1.3ωₐ)^2)  # 1.3ωₐ gives ω ≈ 70, 100, 130, 160
 ms = 1:2:8
-Mmax = length(ms)  # number of modes of interest
+M = length(ms)  # number of modes of interest
 ωₙₗ = .√Ω²[ms]
 Ψₙₗ = Ψ[:,ms]
 nlsol = NonlasingSol(ωₙₗ, Ψₙₗ)
 normalize!(nlsol)
 ψₙₗ₀ = deepcopy(nlsol.ψ)
 
-nlvar = NonlasingVar(CC, Mmax)
+nlvar = NonlasingVar(CC, M)
 
-lsol = LasingSol(3Nx, 0)
-lvar = LasingVar(CC, 0)
-
+lsol = LasingSol(3Nx, M)
+lvar = LasingVar(CC, M)
 
 D₀_array = zeros(3, Nx)
-dₗ₀ = 0.0
-for dₙₗ = 0.1:0.05:0.35
+dₙₗₛ = 0.0
+dₙₗₑ = 0.45
+
+info("Pump up to the desired starting point.")
+for dₙₗ = dₙₗₛ+0.05:0.05:dₙₗₑ
     D₀_array .= 0
     D₀_array[:,1:100] .= dₙₗ
     param.D₀ .= D₀_array[:]
     for m = 1:length(nlsol)
+        # Newton method for nonlasing modes
         for k = 1:20
             init_nlvar!(nlvar, m, nlsol, param.D₀, CC, param)  # use param.D₀ because there is no lasing mode
-            normnleq = norm_nleq(nlsol, m, nlvar)
-            info("m = $m, ‖nleq‖ = $normnleq")
-            if normnleq ≤ Base.rtoldefault(Float64)
+            lnl = norm_nleq(nlsol, m, nlvar)
+            info("m = $m, ‖nleq‖ = $lnl")
+            if lnl ≤ Base.rtoldefault(Float64)
                 break
             end
             update_nlsol!(nlsol, m, nlvar)
         end
     end
-    # Need to supply D instead of D₀.
-    # Delete nonlasing modes above threshold, and append them as lasing modes.  What if more
-    # than one nonlasing mode have reached threshold?
-
     info("dₙₗ = $dₙₗ, ωₙₗ = $(nlsol.ω)")
-    # if imag(nlsol.ω[1]) > 0
-    #     dₗ₀ = dₙₗ
-    #     break
-    # end
 end
-#
-#
-# ωₗ = real(nlsol.ω[1])
-# ψₗ = nlsol.ψ[1]
-# imax = indmax(abs.(ψₗ))
-# w = mod1(imax, 3)  # Cartesian component that is strongest
-# aₗ = abs(ψₗ[imax])
-# ψₗ = ψₗ ./ ψₗ[imax]  # this does not only normalize, but changes phase, which is fine because we can freely change phase of each mode in SALT equation
-# # ψₗ = ψₗ ./ aₗ  # does not change phase; only normalize
-# ψₗ₀ = copy(ψₗ)
-# aₗ = 1.0
-#
-#
-#
-#
-# # Lasing mode
-# # Create variables.
-# lsol = LasingSol([ωₗ], [aₗ], [ψₗ], [imax])
-# lvar = LasingVar(CC, Mmax)
-#
-# # Procedure
-# # - Initialize ∆sol.  (This is a guess ∆sol to feed to the fixed-point equation solver.)
-# # - Initialize rvar and mvar for a given sol and ∆sol.
-# # - Feed the initialized ∆sol to update_∆sol.
-# # - Move sol by ∆sol.
-#
-# for dₗ = dₗ₀:0.05:dₗ₀+1
-#     D₀_array .= 0
-#     D₀_array[:,1:100] .= dₗ
-#     param.D₀ .= D₀_array[:]
-#     normleq = 0.0
-#     for k = 1:100
-#         init_lvar!(lvar, lsol, CC, param)
-#         normleq = norm_leq(lsol, lvar)
-#         if normleq ≤ Base.rtoldefault(Float64)
-#             break
-#         end
-#         update_lsol!(lsol, lvar, CC, param)
-#     end
-#     info("‖leq‖ = $normleq")
-#     info("dₗ = $dₗ, ωₗ = $(lsol.ω[1]), aₗ = $(lsol.a[1])")
-# end
-#
-# using PyPlot
-# # w=3
-# ψwₗ₀ = view(ψₗ₀, w:3:endof(ψₗ₀))
-# ψₗ = lsol.ψ[1]
-# ψwₗ = view(ψₗ, w:3:endof(ψₗ))
-# clf()
-# plot(1:Nx, abs.(ψwₗ₀), "ro", 1:Nx, abs.(ψwₗ), "b-")
-# # plot(1:Nx, abs.(ψwₗ₀), "ro", 1:Nx, abs.(lsol.a[1].*ψwₗ), "b-")
-print()
+
+println()
+info("Find the initial lasing modes.")
+while turnon!(lsol, nlsol)
+    # info("nlsol.ω[1] = $(nlsol.ω[1])")
+    ll = 0.0
+    for k = 1:100
+        info("k = $k")
+        init_lvar!(lvar, lsol, CC, param)
+        ll = norm_leq(lsol, lvar)
+        if ll ≤ Base.rtoldefault(Float64)
+            break
+        end
+        update_lsol!(lsol, lvar, CC, param)
+    end
+    println("‖leq‖ = $ll")
+    println("ωₗ = $(lsol.ω), aₗ² = $(lsol.a²)")
+
+    # Need to solve the nonlasing equation again.
+    for m = nlsol.m_act
+        # Newton method for nonlasing modes
+        for k = 1:20
+            init_nlvar!(nlvar, m, nlsol, lvar.rvar.D, CC, param)
+            lnl = norm_nleq(nlsol, m, nlvar)
+            info("m = $m, ‖nleq‖ = $lnl")
+            if lnl ≤ Base.rtoldefault(Float64)
+                break
+            end
+            update_nlsol!(nlsol, m, nlvar)
+        end
+    end
+end
+info("Result:")
+println("ωₗ = $(lsol.ω), aₗ² = $(lsol.a²)")
+
+lsol₀ = deepcopy(lsol)
+
+check_conflict(lsol, nlsol)
+
+println()
+info("Start simulation.")
+for dₗ = dₙₗₑ+0.05:0.05:dₙₗₑ+3
+    D₀_array .= 0
+    D₀_array[:,1:100] .= dₗ
+    param.D₀ .= D₀_array[:]
+    while true
+        # Solve the lasing equation.
+        while true
+            ll = 0.0
+            k = 0
+            for k = 1:300
+                # info("k = $k")
+                init_lvar!(lvar, lsol, CC, param)
+                ll = norm_leq(lsol, lvar)
+                if ll ≤ Base.rtoldefault(Float64)
+                    break
+                end
+                update_lsol!(lsol, lvar, CC, param)
+            end
+            println("‖leq‖ = $ll, $k iteration steps")
+            println("dₗ = $dₗ, ωₗ = $(lsol.ω), aₗ² = $(lsol.a²)")
+            if !shutdown!(lsol, nlsol)
+                break
+            end
+        end
+
+        # Solve the nonlasing equation.
+        for m = nlsol.m_act
+            # Newton method for nonlasing modes
+            for k = 1:20
+                init_nlvar!(nlvar, m, nlsol, lvar.rvar.D, CC, param)
+                lnl = norm_nleq(nlsol, m, nlvar)
+                println("m = $m, ‖nleq‖ = $lnl")
+                if lnl ≤ Base.rtoldefault(Float64)
+                    break
+                end
+                update_nlsol!(nlsol, m, nlvar)
+            end
+        end
+        println("dₗ = $dₗ, ωₙₗ = $(nlsol.ω)")
+        if !turnon!(lsol, nlsol)
+            break
+        end
+    end
+    check_conflict(lsol, nlsol)
+end
+
 
 using PyPlot
 m = 1
+assert(nlsol.iₐ[m]==lsol₀.iₐ[m]==lsol.iₐ[m])
 w = mod1(nlsol.iₐ[m], 3)  # Cartesian component that is strongest
+
 ψₙₗ₀ₘ = ψₙₗ₀[m]
 ψwₙₗ₀ₘ = view(ψₙₗ₀ₘ, w:3:endof(ψₙₗ₀ₘ))
-ψₙₗₘ = nlsol.ψ[m]
-ψwₙₗₘ = view(ψₙₗₘ, w:3:endof(ψₙₗₘ))
+
+ψₗ₀ₘ = lsol₀.ψ[m]
+ψwₗ₀ₘ = view(ψₗ₀ₘ, w:3:endof(ψₗ₀ₘ))
+
+ψₗₘ = lsol.ψ[m]
+ψwₗₘ = view(ψₗₘ, w:3:endof(ψₗₘ))
+
 clf()
-plot(1:Nx, real.(ψwₙₗ₀ₘ), "ro", 1:Nx, real.(ψwₙₗₘ), "b-")
-# plot(1:Nx, abs.(ψwₗ₀), "ro", 1:Nx, abs.(lsol.a[1].*ψwₗ), "b-")
+plot(1:Nx, abs.(ψwₙₗ₀ₘ), "r-.", 1:Nx, abs.(ψwₗ₀ₘ), "g--", abs.(ψwₗₘ), "b-")

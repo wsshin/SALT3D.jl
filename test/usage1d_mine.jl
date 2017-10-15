@@ -30,7 +30,7 @@ D0 = σ*1.02
 cguess = 1.0;
 tol = 1e-7
 
-imax = indmax(abs.(ψguess))
+imax = indmax(abs, ψguess)
 ψguess = ψguess / ψguess[imax]  # makes ψ[imax] = 1
 v_vec = [ψguess; ωguess + im*cguess]
 

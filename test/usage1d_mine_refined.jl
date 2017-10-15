@@ -28,10 +28,11 @@ Aₙₗ = spdiagm(εc) \ copy(CC)
 Ω², Ψ = eigs(Aₙₗ, nev=1, sigma=ωₐ^2)
 ωguess = real(√Ω²[1])
 ψguess = Ψ[:,1]
-imax = indmax(abs.(ψguess))
+imax = indmax(abs, ψguess)
 aguess = abs(ψguess[imax])
 ψguess = ψguess ./ aguess
-lsol = LasingSol([ωguess], [aguess], [ψguess], [imax])
+a²guess = 0
+lsol = LasingSol([ωguess], [a²guess], [ψguess], [imax])
 
 # Create variables.
 lvar = LasingVar(CC, M)
@@ -55,4 +56,4 @@ end
 using PyPlot
 plot(1:N, abs.(ψguess), "ro", 1:N, abs.(lsol.ψ[m]), "b-")
 
-println("a = $(lsol.a[m])")  # must be around 0.163459
+println("a = $(√lsol.a²[m])")  # must be around 0.163459

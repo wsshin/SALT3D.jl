@@ -47,7 +47,7 @@ Aₙₗ = spdiagm(εc) \ copy(CC)  # A for nonlasing mode
 Ω², Ψ = eigs(Aₙₗ, nev=1, sigma=ωₐ^2)
 ωguess = real(√Ω²[1])
 ψguess = Ψ[:,1]
-imax = indmax(abs.(ψguess))
+imax = indmax(abs, ψguess)
 w = mod1(imax, 3)  # Cartesian component that is strongest
 aguess = abs(ψguess[imax])
 ψguess = ψguess ./ aguess
@@ -80,7 +80,7 @@ using PyPlot
 clf()
 plot(1:Nx, abs.(ψwguess), "ro", 1:Nx, abs.(ψw), "b-")
 
-println("a = $(lsol.a[m])")  # must be around 0.163459
+println("a = $(√lsol.a²[m])")  # must be around 0.163459
 
 
 # ψx = view(ψ, 1:3:endof(ψ))

@@ -56,7 +56,7 @@ Aₙₗ = spdiagm(param.εc) \ copy(CC)  # A for nonlasing mode
 m = 3
 ωₙₗ = √Ω²[m]
 ψₙₗ = Ψ[:,m]
-imax = indmax(abs.(ψₙₗ))
+imax = indmax(abs, ψₙₗ)
 aₙₗ = abs(ψₙₗ[imax])
 ψₙₗ = ψₙₗ ./ ψₙₗ[imax]  # this does not only normalize, but changes phase, which is fine because we can freely change phase of each mode in SALT equation
 # ψₙₗ = ψₙₗ ./ aₙₗ  # does not change phase, only normalize
@@ -70,13 +70,13 @@ for dₙₗ = 0.1:0.05:0.35
     D₀_array[:,1:100] .= dₙₗ
     param.D₀ .= D₀_array[:]
     for k = 1:20
-        init_nlvar!(nlvar, nlsol, param.D₀, CC, param)  # use param.D₀ because there is no lasing mode
-        normnleq = norm_nleq(nlsol, nlvar)
+        init_nlvar!(nlvar, 1, nlsol, param.D₀, CC, param)  # use param.D₀ because there is no lasing mode
+        normnleq = norm_nleq(nlsol, 1, nlvar)
         # info("‖nleq‖ = $normnleq")
         if normnleq ≤ Base.rtoldefault(Float64)
             break
         end
-        update_nlsol!(nlsol, nlvar)
+        update_nlsol!(nlsol, 1, nlvar)
     end
     info("dₙₗ = $dₙₗ, ωₙₗ = $(nlsol.ω[1])")
     if imag(nlsol.ω[1]) > 0
@@ -89,13 +89,13 @@ end
 
 ωₗ = real(nlsol.ω[1])
 ψₗ = nlsol.ψ[1]
-imax = indmax(abs.(ψₗ))
+imax = indmax(abs, ψₗ)
 w = mod1(imax, 3)  # Cartesian component that is strongest
 aₗ = abs(ψₗ[imax])
 ψₗ = ψₗ ./ ψₗ[imax]  # this does not only normalize, but changes phase, which is fine because we can freely change phase of each mode in SALT equation
 # ψₗ = ψₗ ./ aₗ  # does not change phase; only normalize
 ψₗ₀ = copy(ψₗ)
-aₗ = 1.0
+aₗ = 0.0
 
 
 
@@ -125,7 +125,7 @@ for dₗ = dₗ₀:0.05:dₗ₀+1
         update_lsol!(lsol, lvar, CC, param)
     end
     info("‖leq‖ = $normleq")
-    info("dₗ = $dₗ, ωₗ = $(lsol.ω[1]), aₗ = $(lsol.a[1])")
+    info("dₗ = $dₗ, ωₗ = $(lsol.ω[1]), aₗ = $(√lsol.a²[1])")
 end
 
 using PyPlot

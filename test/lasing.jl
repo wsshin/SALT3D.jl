@@ -19,7 +19,7 @@ param = SALTParam(ωₐ, γ⟂, εc, D₀)
 M = 3
 ω = rand(M)
 ω[m] = ωₘ
-a = rand(M)
+a² = rand(M)
 Ψ = randn(N,M) + im .* randn(N,M)
 ψ = [Ψ[:,j] for j = 1:M]
 iarray = rand(1:N, M)
@@ -40,7 +40,7 @@ D′ = -D₀ ./ abs2.(hb)
 ∆D = similar(D)
 SALT3D.∆popinv!(∆D, D′, a, ψ, ∆ψ)
 ∇ₐD = [zeros(N) for m = 1:M]
-SALT3D.∇ₐpopinv!(∇ₐD, D′, a, ψ)
+SALT3D.∇ₐ₂popinv!(∇ₐD, D′, a², ψ)
 rvar = SALT3D.LasingReducedVar(N, M)
 SALT3D.init_reduced_var!(rvar, ∆sol, sol, param)
 @testset "reduced variables" begin

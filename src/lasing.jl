@@ -372,11 +372,11 @@ function set_constraint!(cst::LasingConstraint,
 end
 
 
-function update_∆ψₘ!(∆lsol::∆LasingSol,
-                     lsol::LasingSol,
-                     m::Integer,  # index of lasing mode of interest
-                     mvar::LasingModalVar,  # ∆ω and ∆a² must be already updated; see update_∆lsol
-                     rvar::LasingReducedVar)
+function apply_∆solₘ!(∆lsol::∆LasingSol,
+                      lsol::LasingSol,
+                      m::Integer,  # index of lasing mode of interest
+                      mvar::LasingModalVar,  # ∆ω and ∆a² must be already updated; see update_∆lsol
+                      rvar::LasingReducedVar)
     M = length(lsol)  # number of lasing modes
 
     # Retrieve necessary variables for constructing the constraint.
@@ -396,21 +396,30 @@ function update_∆ψₘ!(∆lsol::∆LasingSol,
     vtemp = ∆lsol.vtemp
     vtemp .= (∆D .* ω²γψ) .+ (∆ω .* ∂f∂ω)
     # vtemp .= (∆ω .* ∂f∂ω)  # ∆D = 0
-    for m = lsol.m_act
-        vtemp .+= ∆a²[m] .* (∇ₐ₂D[m] .* ω²γψ)
+    for j = lsol.m_act
+        vtemp .+= ∆a²[j] .* (∇ₐ₂D[j] .* ω²γψ)
     end
 
-    # Calculate ∆ψ.
-    ∆ψ .= mvar.A \ vtemp
-    ∆ψ .-= ψ
-    # ∆ψ[lsol.iₐ[m]] = 0
+    # # Calculate ∆ψ.
+    # ∆ψ .= mvar.A \ vtemp
+    # ∆ψ .-= ψ
+    # # ∆ψ[lsol.iₐ[m]] = 0
+
+    ψ .= mvar.A \ vtemp
+    iₐ = lsol.iₐ[m]
+    ψ ./= ψ[iₐ]
+
+    # The following could have been updated before this function, because they were already
+    # prepared.
+    lsol.ω[m] += ∆ω
+    lsol.a²[m] += ∆a²[m]
 
     return nothing
 end
 
 
 # Calculate ∆ω and ∆a, and then ∆ψ.
-function update_∆lsol!(∆lsol::∆LasingSol,
+function apply_∆lsol!(∆lsol::∆LasingSol,
                        lsol::LasingSol,
                        mvar_vec::AbsVec{<:LasingModalVar},  # must be already initialized
                        rvar::LasingReducedVar,  # must be already initialized
@@ -427,7 +436,7 @@ function update_∆lsol!(∆lsol::∆LasingSol,
     activate!(cst, lsol)
     ind = cst.m2_act
     ∆ωa² = cst.A[ind,ind] \ cst.b[ind]
-    c= 0  # count
+    c = 0  # count
     for m = lsol.m_act
         c += 1
         ∆lsol.∆ω[m] = ∆ωa²[2c-1]
@@ -436,30 +445,7 @@ function update_∆lsol!(∆lsol::∆LasingSol,
 
     # Update ∆ψ.
     for m = lsol.m_act
-        update_∆ψₘ!(∆lsol, lsol, m, mvar_vec[m], rvar)
-    end
-
-    return nothing
-end
-
-
-# Move a solution by ∆solution.
-function move_lsol!(lsol::LasingSol, ∆lsol::∆LasingSol)
-    M = length(lsol)
-    for m = lsol.m_act
-        # info("∆ω[$m] = $(∆lsol.∆ω[m]), ∆a²[$m] = $(∆lsol.∆a²[m]), ‖∆ψ[$m]‖ = $(norm(∆lsol.∆ψ[m]))")
-        lsol.ω[m] += ∆lsol.∆ω[m]
-        lsol.a²[m] += ∆lsol.∆a²[m]
-        lsol.ψ[m] .+= ∆lsol.∆ψ[m]
-
-        # Fix the small drift at the normalization point by normalizing again.
-        iₐ = lsol.iₐ[m]
-        lsol.ψ[m] ./= lsol.ψ[m][iₐ]
-        # lsol.ψ[m] ./= abs(lsol.ψ[m][iₐ])
-
-        # lsol.ω[m] += ∆lsol.∆ω[m]
-        # lsol.a[m] += ∆lsol.∆a[m]
-        # lsol.ψ[m] .+= ∆lsol.∆ψ[m]
+        apply_∆solₘ!(∆lsol, lsol, m, mvar_vec[m], rvar)
     end
 
     return nothing
@@ -473,8 +459,7 @@ function update_lsol!(lsol::LasingSol,
                       cst::LasingConstraint,
                       CC::AbsMatNumber,
                       param::SALTParam)
-    update_∆lsol!(∆lsol, lsol, mvar_vec, rvar, cst, param)
-    move_lsol!(lsol, ∆lsol)
+    apply_∆lsol!(∆lsol, lsol, mvar_vec, rvar, cst, param)
 
     return nothing
 end

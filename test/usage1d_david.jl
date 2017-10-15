@@ -28,7 +28,7 @@ Dpump = σ*1.02  # slightly higher than loss for lasing; increase this from 1.02
 cguess = 1.0;
 tol = 1e-7
 
-imax = indmax(abs.(ψguess))
+imax = indmax(abs, ψguess)
 ψ = ψguess / ψguess[imax]
 ω = ωguess
 c = cguess
