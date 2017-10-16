@@ -1,5 +1,6 @@
 using SALT3D
 using MaxwellFD3D
+using JLD
 using PyPlot
 
 # Create a grid.
@@ -49,9 +50,12 @@ CC = Cv * Cu
 
 
 # Choose guess solutions
-Aₙₗ = spdiagm(param.εc) \ copy(CC)  # A for nonlasing mode
-Ω², Ψ = eigs(Aₙₗ, nev=8, sigma=(1.3ωₐ)^2)  # 1.3ωₐ gives ω ≈ 70, 100, 130, 160
-ms = 1:2:4
+# Aₙₗ = spdiagm(param.εc) \ copy(CC)  # A for nonlasing mode
+# Ω², Ψ = eigs(Aₙₗ, nev=8, sigma=(1.3ωₐ)^2)  # 1.3ωₐ gives ω ≈ 70, 100, 130, 160
+# @save "guess_multimode.jld" Ω² Ψ
+@load "guess_multimode.jld"
+
+ms = 1:2:8
 M = length(ms)  # number of modes of interest
 ωₙₗ = .√Ω²[ms]
 Ψₙₗ = Ψ[:,ms]
@@ -66,8 +70,8 @@ lvar = LasingVar(CC, M)
 
 D₀_array = zeros(3, Nx)
 dₙₗₛ = 0.0
-# dₙₗₑ = 0.45
-dₙₗₑ = 0.0
+dₙₗₑ = 0.45
+# dₙₗₑ = 0.0
 
 info("Pump up to the desired starting point.")
 for dₙₗ = dₙₗₛ+0.05:0.01:dₙₗₑ
@@ -94,9 +98,9 @@ info("Find the initial lasing modes.")
 while turnon!(lsol, nlsol)
     # info("nlsol.ω[1] = $(nlsol.ω[1])")
     ll = 0.0
+    init_lvar!(lvar, lsol, CC, param)
     for k = 1:100
         info("k = $k")
-        init_lvar!(lvar, lsol, CC, param)
         ll = norm_leq(lsol, lvar)
         if ll ≤ Base.rtoldefault(Float64)
             break
@@ -129,7 +133,7 @@ check_conflict(lsol, nlsol)
 
 println()
 info("Start simulation.")
-for dₗ = dₙₗₑ+0.05:0.05:dₙₗₑ+2  # too many fixed-point iterations if last value is too large, even if M = 2
+for dₗ = dₙₗₑ+0.05:0.05:dₙₗₑ+3  # too many fixed-point iterations if last value is too large, even if M = 2
     D₀_array .= 0
     D₀_array[:,1:100] .= dₗ
     param.D₀ .= D₀_array[:]
@@ -138,9 +142,9 @@ for dₗ = dₙₗₑ+0.05:0.05:dₙₗₑ+2  # too many fixed-point iterations 
         while true
             ll = 0.0
             k = 0
-            for k = 1:300
+            init_lvar!(lvar, lsol, CC, param)
+            for k = 1:1000
                 # info("k = $k")
-                init_lvar!(lvar, lsol, CC, param)
                 ll = norm_leq(lsol, lvar)
                 if ll ≤ Base.rtoldefault(Float64)
                     break
@@ -192,4 +196,4 @@ w = mod1(nlsol.iₐ[m], 3)  # Cartesian component that is strongest
 ψwₗₘ = view(ψₗₘ, w:3:endof(ψₗₘ))
 
 clf()
-plot(1:Nx, abs.(ψwₙₗ₀ₘ), "r-.", 1:Nx, abs.(ψwₗ₀ₘ), "g--", abs.(ψwₗₘ), "b-")
+plot(1:Nx, abs.(ψwₙₗ₀ₘ), "r-.", 1:Nx, abs.(ψwₗ₀ₘ), "g--", 1:Nx, abs.(ψwₗₘ), "b-")

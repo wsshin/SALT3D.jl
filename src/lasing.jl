@@ -452,19 +452,12 @@ function apply_∆lsol!(∆lsol::∆LasingSol,
 end
 
 
-function update_lsol!(lsol::LasingSol,
-                      ∆lsol::∆LasingSol,
-                      mvar_vec::AbsVec{<:LasingModalVar},
-                      rvar::LasingReducedVar,
-                      cst::LasingConstraint,
-                      CC::AbsMatNumber,
-                      param::SALTParam)
-    apply_∆lsol!(∆lsol, lsol, mvar_vec, rvar, cst, param)
-
-    return nothing
+# Fixed-point equation for lsol.
+# lvar must be already initialized by init_lvar! before starting the fixed-point iteration.
+function update_lsol!(lsol::LasingSol, lvar::LasingVar, CC::AbsMatNumber, param::SALTParam)
+    apply_∆lsol!(lvar.∆lsol, lsol, lvar.mvar_vec, lvar.rvar, lvar.cst, param)
+    init_lvar!(lvar, lsol, CC, param)  # initialize lvar for next step
 end
-update_lsol!(lsol::LasingSol, lvar::LasingVar, CC::AbsMatNumber, param::SALTParam) =
-    update_lsol!(lsol, lvar.∆lsol, lvar.mvar_vec, lvar.rvar, lvar.cst, CC, param)
 
 
 # To use andersonaccel!, implement anderson_SALT! that accepts SALTSol as an initial guess
