@@ -6,21 +6,25 @@ export turnon!, shutdown!, check_conflict
 function turnon!(lsol::LasingSol, nlsol::NonlasingSol)
     m = indmax(imag, nlsol.ω, nlsol.m_act)
     info("turnon: ωₙₗ = $(nlsol.ω), m_actₙₗ = $(nlsol.m_act), m = $m")
-    ω = nlsol.ω[m]
-    mode2turnon = imag(ω) > 0
-    if mode2turnon  # consider imag(ω) = 0 as nonlasing in order to keep lasing equation minimal
-        # Set guess values for the lasing mode
-        lsol.ω[m] = real(ω)
-        lsol.a²[m] = 0.0
 
-        iₐ = nlsol.iₐ[m]
-        lsol.iₐ[m] = iₐ
+    mode2turnon = m≠0
+    if mode2turnon
+        ω = nlsol.ω[m]
+        mode2turnon = imag(ω) > 0
+        if mode2turnon  # consider imag(ω) = 0 as nonlasing in order to keep lasing equation minimal
+            # Set guess values for the lasing mode
+            lsol.ω[m] = real(ω)
+            lsol.a²[m] = 0.0
 
-        ψ = nlsol.ψ[m]
-        lsol.ψ[m] .= ψ ./ ψ[iₐ]  # make ψ[iₐ] = 1
+            iₐ = nlsol.iₐ[m]
+            lsol.iₐ[m] = iₐ
 
-        push!(lsol, m)
-        pop!(nlsol, m)
+            ψ = nlsol.ψ[m]
+            lsol.ψ[m] .= ψ ./ ψ[iₐ]  # make ψ[iₐ] = 1
+
+            push!(lsol, m)
+            pop!(nlsol, m)
+        end
     end
 
     return mode2turnon
@@ -31,19 +35,22 @@ end
 # Return true if there is any mode to shut down.
 function shutdown!(lsol::LasingSol, nlsol::NonlasingSol)
     m = indmin(identity, lsol.a², lsol.m_act)
-    a² = lsol.a²[m]
-    mode2shutdown = a² ≤ 0
-    if mode2shutdown  # consider a² = 0 as nonlasing in order to keep lasing equation minimal
-        nlsol.ω[m] = lsol.ω[m]
+    mode2shutdown = m≠0
+    if mode2shutdown
+        a² = lsol.a²[m]
+        mode2shutdown = a² ≤ 0
+        if mode2shutdown  # consider a² = 0 as nonlasing in order to keep lasing equation minimal
+            nlsol.ω[m] = lsol.ω[m]
 
-        iₐ = lsol.iₐ[m]
-        nlsol.iₐ[m] = iₐ
+            iₐ = lsol.iₐ[m]
+            nlsol.iₐ[m] = iₐ
 
-        ψ = lsol.ψ[m]
-        nlsol.ψ[m] .= ψ ./ ψ[iₐ]  # make ψ[iₐ] = 1
+            ψ = lsol.ψ[m]
+            nlsol.ψ[m] .= ψ ./ ψ[iₐ]  # make ψ[iₐ] = 1
 
-        push!(nlsol, m)
-        pop!(lsol, m)
+            push!(nlsol, m)
+            pop!(lsol, m)
+        end
     end
 
     return mode2shutdown

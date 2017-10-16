@@ -51,7 +51,7 @@ CC = Cv * Cu
 # Choose guess solutions
 Aₙₗ = spdiagm(param.εc) \ copy(CC)  # A for nonlasing mode
 Ω², Ψ = eigs(Aₙₗ, nev=8, sigma=(1.3ωₐ)^2)  # 1.3ωₐ gives ω ≈ 70, 100, 130, 160
-ms = 1:2:8
+ms = 1:2:4
 M = length(ms)  # number of modes of interest
 ωₙₗ = .√Ω²[ms]
 Ψₙₗ = Ψ[:,ms]
@@ -66,10 +66,11 @@ lvar = LasingVar(CC, M)
 
 D₀_array = zeros(3, Nx)
 dₙₗₛ = 0.0
-dₙₗₑ = 0.45
+# dₙₗₑ = 0.45
+dₙₗₑ = 0.0
 
 info("Pump up to the desired starting point.")
-for dₙₗ = dₙₗₛ+0.05:0.05:dₙₗₑ
+for dₙₗ = dₙₗₛ+0.05:0.01:dₙₗₑ
     D₀_array .= 0
     D₀_array[:,1:100] .= dₙₗ
     param.D₀ .= D₀_array[:]
@@ -128,7 +129,7 @@ check_conflict(lsol, nlsol)
 
 println()
 info("Start simulation.")
-for dₗ = dₙₗₑ+0.05:0.05:dₙₗₑ+3
+for dₗ = dₙₗₑ+0.05:0.05:dₙₗₑ+2  # too many fixed-point iterations if last value is too large, even if M = 2
     D₀_array .= 0
     D₀_array[:,1:100] .= dₗ
     param.D₀ .= D₀_array[:]
@@ -177,7 +178,8 @@ end
 
 using PyPlot
 m = 1
-assert(nlsol.iₐ[m]==lsol₀.iₐ[m]==lsol.iₐ[m])
+# assert(nlsol.iₐ[m]==lsol₀.iₐ[m]==lsol.iₐ[m])  # error if dₙₗₑ = 0.0 and lsol₀ is uninitialized.
+assert(nlsol.iₐ[m]==lsol.iₐ[m])  # error if dₙₗₑ = 0.0 and lsol₀ is uninitialized.
 w = mod1(nlsol.iₐ[m], 3)  # Cartesian component that is strongest
 
 ψₙₗ₀ₘ = ψₙₗ₀[m]
