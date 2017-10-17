@@ -1,128 +1,134 @@
-export andensoraccel!, andersonaccel
+export anderson_salt!
 
-# To do: pass the storages f, ∆X, ∆F, Q, γ.  Also, think about ways to reduce this memory.
+# To do: pass the storages f, ∆X, ∆F, Q, β.  Also, think about ways to reduce this memory.
 
 # Solve the fixed-point equation g(x) = x to given relative and absolute tolerances,
 # returning the solution x, via Anderson acceleration of a fixed-point iteration starting at
 # a given initial x (which must be of the correct type to hold the result).
 #
 # This implementation operates in-place as much as possible.
-function andersonaccel!(
-    g!::Function,  # g!(y,x) that overwrites a given output vector y with g(x); x and y must be different vectors
-    x::AbstractVector{T};  # initial guess; overwritten at each iteration step (note g! itself does not overwrite x)
-    m = min(10, length(x)÷2), # number of additional x's kept in algorithm; m = 0 means unaccelerated iteration
-    norm=Base.norm, # stopping criterion: norm(Δx) ≤ rtol*norm(x) + atol
-    rtol::Real=Base.rtoldefault(real(T)),  # relative tolerance (real(T) = R)
-    atol::Real=0,  # absolute tolerance
-    maxit::Int=typemax(Int)  # number of maximum number of iteration steps
-) where {R<:AbstractFloat,T<:Union{R,Complex{R}}}
+function anderson_salt!(lsol::LasingSol,
+                        lvar::LasingVar,
+                        CC::AbsMatNumber,
+                        param::SALTParam;
+                        m::Integer=10, # number of additional x's kept in algorithm; m = 0 means unaccelerated iteration
+                        τ::Real=1e-2,  # relative tolerance; consider using Base.rtoldefault(Float)
+                        maxit::Int=typemax(Int))  # number of maximum number of iteration steps
+    m ≥ 0 || throw(ArgumentError("m = $m must be ≥ 0."))
+    τ ≥ 0 || throw(ArgumentError("τ = $τ must be ≥ 0."))
 
-    m ≥ 0 || throw(ArgumentError("m (= $m) < 0 is not allowed."))
-    rtol ≥ 0 || throw(ArgumentError("rtol (= $rtol) < 0 is not allowed."))
-    atol ≥ 0 || throw(ArgumentError("atol (= $atol) < 0 is not allowed."))
-
+    x = lsol2rvec(lsol)
     n = length(x)
-    m ≤ n || throw(ArgumentError("m (= $m) > n (= $n) is not allowed."))
+    m ≤ n || throw(ArgumentError("m = $m must be > length(lsol2rvec(lsol)) = $n."))
 
-    y = Vector{T}(n)
+    k = 0
+    leq = norm_leq(lsol, lvar, CC, param)
+    println("Step $k of Anderson: ‖leq‖ = $leq")
+    leq ≤ τ && return nothing
 
-    if m == 0 # simple fixed-point iteration, no memory
-        for k = 0:maxit-1
-            g!(y, x)
+    # Storing xold is needed only for the m ≠ 0 case, so executing the following block only
+    # for m ≠ 0 would have saved 1 allocation.  However, putting the following block here
+    # increase code readability, because doing update_lsol! right after norm_leq is an idiom.
+    # m ≠ 0 is rarely used anyway.
+    xold = VecFloat(n)
+    xold .= x  # xold = x₀
+    update_lsol!(lsol, lvar, CC, param)  # x is updated to x₁ = g(x₀)
+    # Note we need at least two x's to perform the m ≠ 0 Anderson acceleration.
 
-            # Use y to store ∆x temporarily; y will be updated to y = g(x) in the next
-            # iteration step anyway.
-            for i = eachindex(x)
-                x[i], y[i] = y[i], y[i]-x[i]
-            end
-
-            lx, ly = norm(x), norm(y)
-            info("Step $(k+1) of Anderson: ‖x($(k+1))-x($k)‖ / ‖x($k)‖ = $(ly/lx)")
-            ly ≤ rtol*lx + atol && break  # norm(y) = norm(∆x)
+    if m == 0 # simple fixed-point iteration (no memory)
+        for k = 1:maxit-1
+            leq = norm_leq(lsol, lvar, CC, param)
+            println("Step $k of Anderson: ‖leq‖ = $leq")
+            leq ≤ τ && break
+            update_lsol!(lsol, lvar, CC, param)
         end
     else  # m ≠ 0
         # Pre-allocate all of the arrays we will need.  The goal is to allocate once and re-use
         # the storage during the iteration by operating in-place.
-        f = Vector{T}(n)
-        ∆X = Matrix{T}(n, m)  # columns: ∆x's
-        ∆F = Matrix{T}(n, m)  # columns: ∆f's
-        Q = Matrix{T}(n, m)  # space for QR factorization
-        γ = Vector{T}(max(n,m))  # not m, in order to store RHS vector (f: length-n) and overwrite in-place via A_ldiv_B! (max length m)
+        f = VecFloat(n)
+        ∆X = MatFloat(n, m)  # columns: ∆x's
+        ∆F = MatFloat(n, m)  # columns: ∆f's
+        Q = MatFloat(n, m)  # space for QR factorization
+        β = VecFloat(max(n,m))  # not m, in order to store RHS vector (f: length-n) and overwrite in-place via A_ldiv_B! (max length m)
 
-        # First iteration: update y = g(x).
-        g!(y, x)
-
-        kcol = 1
-        for i = eachindex(x)
-            x[i], ∆X[i,kcol] = y[i], (y[i] = f[i] = y[i]-x[i])  # f(x) = g(x) - x
+        # Find x₁ = g(x₀): we need at least two x's to perform the Anderson acceleration.
+        col = 1
+        for i = 1:n
+            f[i] = x[i] - xold[i]  # f(x₀) = g(x₀) - x₀
+            ∆X[i,col] = f[i]  # ∆x₀ = x₁ - x₀
         end
+        # Note that in the subsequent iteration, xₖ₊₁ is not necessarily g(xₖ), so
+        # ∆xₖ = xₖ₊₁ - xₖ is not necessarily f(xₖ) = g(xₖ) - xₖ.
 
-        # Subsequent iterations
+        # Perform subsequent iterations.
+        #
+        # (Assumption) The following quantities are known at the beginning of every iteration:
+        # - xₖ
+        # - f(xₖ₋₁)
+        # - ∆xₖ₋₁
+        # These quantities must be updated at the end of the for loop to satisfy the
+        # assumption at every iteration.
+        #
+        # Using these quantities, in each iteration
+        # - g(xₖ) is calculated,
+        # - with which f(xₖ) = g(xₖ) - xₖ is calculated,
+        # - with which ∆fₖ₋₁ = f(xₖ) - f(xₖ₋₁) is calculated.
+        #
+        # Then we know ∆xₖ₋₁ and ∆fₖ₋₁, which are needed for the Anderson acceleration.
         for k = 1:maxit-1
-            norm(y) ≤ rtol*norm(x) + atol && break
+            leq = norm_leq(lsol, lvar, CC, param)
+            println("Step $k of Anderson: ‖leq‖ = $leq")
+            leq ≤ τ && break
 
-            # Update y = g(x).
-            g!(y, x)
+            # Evaluate g(xₖ).
+            xold .= x  # xold = xₖ
+            update_lsol!(lsol, lvar, CC, param)  # x is updated to g(xₖ) (but this x is not xₖ₊₁)
 
             # Prepare the least squares problem.
-            for i = eachindex(x)
-                f[i], ∆F[i,kcol] = (γ[i] = y[i]-x[i]), γ[i]-f[i]  # γ = fnew
+            for i = 1:n
+                β[i] = x[i] - xold[i]  # temporary storage for f(xₖ) = g(xₖ) - xₖ
+                ∆F[i,col] = β[i] - f[i]  # ∆fₖ₋₁ = f(xₖ) - f(xₖ₋₁)
+                f[i] = β[i]  # f(xₖ)
             end
 
-            m′ = min(m, k)
-
-            # Construct subarrays to work in-place on a subset of the columns.
-            if m′ < m
-                γ′, ∆X′, ∆F′, Q′ = @view(γ[1:m′]), @view(∆X[:,1:m′]), @view(∆F[:,1:m′]), @view(Q[:,1:m′])
-                # γ′, ∆X′, ∆F′, Q′ = @views γ[1:m′], ∆X[:,1:m′], ∆F[:,1:m′], Q[:,1:m′]  # in Julia 0.7
-            elseif m′ == m
-                γ′, ∆X′, ∆F′, Q′ = @view(γ[1:m]), ∆X, ∆F, Q
-            end  # use previous γ′, ∆X′, ∆F′, Q′ for m′ > m
-
             # Solve the least squares problem.
-            QR = qrfact!(copy!(Q′,∆F′), Val{true})
-            A_ldiv_B!(QR, γ) # overwrites γ′ in-place with ∆F′ \ f; only first m′ entries of γ are meaningful
+            #
+            # The code overwrites β with ∆F′ \ f.  (Note that β stores f at this point.)
+            # Only first m′ entries of the solution β are meaningful, because they are the
+            # entries of the least squares solution.
+            #
+            # In the following, QR′ and QR have different types, so we introduce separate
+            # variables for type stability.
+            if k < m
+                # Construct subarrays to work in-place on a subset of the columns.
+                Q′, ∆F′ = @views Q[:,1:k], ∆F[:,1:k]
+                QR′ = qrfact!(copy!(Q′, ∆F′), Val{true})
+                A_ldiv_B!(QR′, β)
+            else
+                QR = qrfact!(copy!(Q, ∆F), Val{true})
+                A_ldiv_B!(QR, β)
+            end
 
-            # Replace columns of ∆F and ∆X with the new data in-place.  Rather than always appending
-            # the new data in the last column, we cycle through the m-1 columns periodically.
-            kcol = mod1(kcol+1, m)  # next column of ∆F, ∆X to update
-
-            # x = x + f - (∆X′ + ∆F′)*γ′, updating in-place
-            # (also update ∆X[:,kcol+1] with new Δx, and set y = Δx)
-            for i = eachindex(x)
-                y[i] = f[i]
-                for j = eachindex(γ′)
-                    y[i] -= (∆X′[i,j] + ∆F′[i,j])*γ′[j]
+            # Replace the columns of ∆X (and ∆F in the next iteration) with the new data
+            # in-place.  Rather than always appending the new data in the last column, cycle
+            # through the m columns periodically.
+            col = mod1(col+1, m)  # next column of ∆X and ∆F to update
+            for i = 1:n
+                # Update x with xₖ₊₁ = xₖ + fₖ - (∆X′ + ∆F′)*β′.
+                # Note that x is already g(xₖ) = xₖ + f(xₖ)
+                for j = 1:min(m,k)
+                    x[i] -= (∆X[i,j] + ∆F[i,j]) * β[j]
                 end
 
-                # At this point, y is temporary storage for ∆x.
-                ∆X[i,kcol] = y[i]
-                x[i] += y[i]
+                ∆X[i,col] = x[i] - xold[i]  # ∆xₖ = xₖ₊₁ - xₖ
             end
         end  # for k = 1:maxit-1
     end  # if m == 0
 
-    return x
+    if k == maxit  # iteration terminated by consuming maxit steps
+        leq = norm_leq(lsol, lvar, CC, param)
+        println("Step $k of Anderson: ‖leq‖ = $leq")
+    end
+
+    return nothing
 end
-
-"""
-    andersonaccel(g, x; m, norm=Base.norm, rtol=sqrt(ɛ), atol=0, maxits)
-
-Solve the fixed-point problem \$g(x)=x\$ to given relative and absolute tolerances,
-returning the solution \$x\$, via Anderson acceleration of a fixed-point
-iteration starting at `x` and given the function `g(x)`.
-
-The keyword parameters are the same as for `andersonaccel`: they specify
-the "memory" `m` of the algorithm, the relative (`rtol`) and absolute
-(`atol`) stopping tolerances in the given `norm`, and the maximum
-number of itertions (`maxits`).
-"""
-andersonaccel{T<:Number}(g, x::AbstractVector{T}; kws...) = andersonaccel!(
-    (y,x) -> copy!(y, g(x)),  # convert y = g(x) to g!(y,x) that overwrites y
-    copy!(Array{float(T)}(length(x)), x);  # to prevent in-place solution
-    kws...)
-
-andersonaccel{T<:Number}(g, x::T; kws...) = andersonaccel(
-    x -> g(x[1]),  # g takes scalar
-    [x];
-    kws...)[1]

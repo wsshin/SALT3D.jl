@@ -33,10 +33,10 @@ const AbsMatReal = AbsMat{<:Real}
 const AbsMatNumber = AbsMat{<:Number}
 
 include("base.jl")
-include("anderson.jl")
 include("salteq.jl")
 include("lasing.jl")
 include("nonlasing.jl")
 include("switching.jl")
+include("anderson.jl")
 
 end # module

@@ -5,7 +5,7 @@
 # directly without calculating ∆ψ.
 
 export LasingSol, LasingVar
-export init_lvar!, norm_leq, update_lsol!
+export norm_leq, update_lsol!, fixedpt!
 
 # Solutions to the lasing equation.
 mutable struct LasingSol{VC<:AbsVecComplex}  # VC can be PETSc vector
@@ -223,7 +223,6 @@ LasingVar(mtemp::AbsMat, M::Integer) = (N = size(mtemp)[1]; LasingVar(mtemp, Vec
 
 
 function init_reduced_var!(rvar::LasingReducedVar, ∆lsol::∆LasingSol, lsol::LasingSol, param::SALTParam)
-    M = length(lsol)
     hole_burning!(rvar.D′, lsol.a², lsol.ψ)  # temporarily store hole-burning term in D′
 
     rvar.D .= param.D₀ ./ rvar.D′  # D = D₀ / (1 + ∑a²|ψ|²)
@@ -279,7 +278,6 @@ function init_∆lsol!(∆lsol::∆LasingSol)
 
 
 function init_lvar!(lvar::LasingVar, lsol::LasingSol, CC::AbsMatNumber, param::SALTParam)
-    M = length(lsol)
     ∆lsol = lvar.∆lsol
     mvar_vec = lvar.mvar_vec
     rvar = lvar.rvar
@@ -295,8 +293,6 @@ end
 
 
 function norm_leq(lsol::LasingSol, mvar_vec::AbsVec{<:LasingModalVar})
-    M = length(lsol)
-
     leq² = 0.0
     for m = lsol.m_act
         A = mvar_vec[m].A
@@ -306,7 +302,14 @@ function norm_leq(lsol::LasingSol, mvar_vec::AbsVec{<:LasingModalVar})
 
     return √leq²
 end
-norm_leq(lsol::LasingSol, lvar::LasingVar) = norm_leq(lsol, lvar.mvar_vec)
+
+function norm_leq(lsol::LasingSol, lvar::LasingVar, CC::AbsMatNumber, param::SALTParam)
+    # Call init_lvar!, which is necessary for using update_lsol!, here in order to force
+    # checking the norm before using update_lsol!.
+    init_lvar!(lvar, lsol, CC, param)
+
+    return norm_leq(lsol, lvar.mvar_vec)
+end
 
 # To do: use an iterative solver inside this, and pass a storage for the output.  (We need
 # to change init_modal_var! accordingly.)
@@ -315,6 +318,7 @@ function row_A⁻¹(iₐ::Integer,  # row index
     N = size(A)[1]
     eᵢₐ = zeros(N)
     eᵢₐ[iₐ] = 1
+    # info("‖A‖₁ = $(norm(A,1))")
     rowA⁻¹ᵢₐ = A.' \ eᵢₐ  # R = A⁻ᵀ; rowA⁻¹ᵢₐ = (column form of iₐth row of A⁻¹) = (eᵢₐᵀ A⁻¹)ᵀ = A⁻ᵀ eᵢₐ
 
     return rowA⁻¹ᵢₐ
@@ -328,8 +332,6 @@ function set_constraint!(cst::LasingConstraint,
                          m::Integer,  # index of lasing mode of interest
                          mvar::LasingModalVar,  # modal variables for mth lasing mode
                          rvar::LasingReducedVar)
-    M = length(lsol)  # number of lasing modes
-
     ψ = lsol.ψ[m]
     ∆ψ = ∆lsol.∆ψ[m]
     iₐ = lsol.iₐ[m]
@@ -350,6 +352,7 @@ function set_constraint!(cst::LasingConstraint,
     # Set the right-hand-side vector of the constraint.
     vtemp .= ∆D.*ω²γψ
     ζv = ψ[iₐ] - BLAS.dotu(r, vtemp)  # scalar; note negation because ζv is quantity on RHS
+    # info("ψ[iₐ] = $(ψ[iₐ]), ‖ψ‖ = $(norm(ψ))")
     # ζv = ψ[iₐ]  # ∆D = 0
     b[2m-1] = real(ζv)
     b[2m] = imag(ζv)
@@ -372,13 +375,12 @@ function set_constraint!(cst::LasingConstraint,
 end
 
 
-function apply_∆solₘ!(∆lsol::∆LasingSol,
-                      lsol::LasingSol,
+# Move lsolₘ by ∆lsolₘ.
+function apply_∆solₘ!(lsol::LasingSol,
+                      ∆lsol::∆LasingSol,
                       m::Integer,  # index of lasing mode of interest
                       mvar::LasingModalVar,  # ∆ω and ∆a² must be already updated; see update_∆lsol
                       rvar::LasingReducedVar)
-    M = length(lsol)  # number of lasing modes
-
     # Retrieve necessary variables for constructing the constraint.
     ∆D = rvar.∆D
     ∇ₐ₂D = rvar.∇ₐ₂D
@@ -389,6 +391,7 @@ function apply_∆solₘ!(∆lsol::∆LasingSol,
     ∆ω = ∆lsol.∆ω[m]
     ∆a² = ∆lsol.∆a²
     ∆ψ = ∆lsol.∆ψ[m]
+    # info("‖∆D‖ = $(norm(∆D)), ‖ω²γψ‖ = $(norm(ω²γψ)), ‖∂f∂ω‖ = $(norm(∂f∂ω)), ∆ω = $∆ω, ∆a² = $∆a², ‖∆ψ‖ = $(norm(∆ψ))")
 
     ψ = lsol.ψ[m]
 
@@ -397,6 +400,7 @@ function apply_∆solₘ!(∆lsol::∆LasingSol,
     vtemp .= (∆D .* ω²γψ) .+ (∆ω .* ∂f∂ω)
     # vtemp .= (∆ω .* ∂f∂ω)  # ∆D = 0
     for j = lsol.m_act
+        # info("‖∇ₐ₂D[$j]‖ = $(norm(∇ₐ₂D[j]))")
         vtemp .+= ∆a²[j] .* (∇ₐ₂D[j] .* ω²γψ)
     end
 
@@ -405,6 +409,7 @@ function apply_∆solₘ!(∆lsol::∆LasingSol,
     # ∆ψ .-= ψ
     # # ∆ψ[lsol.iₐ[m]] = 0
 
+    # info("‖A‖₁ = $(norm(mvar.A,1)), ‖vtemp‖ = $(norm(vtemp))")
     ψ .= mvar.A \ vtemp
     iₐ = lsol.iₐ[m]
     ψ ./= ψ[iₐ]
@@ -418,16 +423,23 @@ function apply_∆solₘ!(∆lsol::∆LasingSol,
 end
 
 
-# Calculate ∆ω and ∆a, and then ∆ψ.
-function apply_∆lsol!(∆lsol::∆LasingSol,
-                       lsol::LasingSol,
-                       mvar_vec::AbsVec{<:LasingModalVar},  # must be already initialized
-                       rvar::LasingReducedVar,  # must be already initialized
-                       cst::LasingConstraint,
-                       param::SALTParam)
-    M = length(lsol)  # number of lasing modes
-
+# Fixed-point equation for lsol.  Calculate ∆ω and ∆a, and then ∆ψ, and move lsol by them.
+#
+# This function is expensive to call, because it involves 2Mₗ linear solves, where Mₗ is the
+# number of lasing modes.  Therefore, try not to call this function unnecessarily.
+#
+# init_lvar! must be called before using this function to make lvar prepared.  However,
+# init_lval! is not exported in order to force checking the norm by norm_leq to avoid
+# calling this function when the norm is small enough.
+function update_lsol!(lsol::LasingSol,
+                      ∆lsol::∆LasingSol,
+                      mvar_vec::AbsVec{<:LasingModalVar},  # must be already initialized
+                      rvar::LasingReducedVar,  # must be already initialized
+                      cst::LasingConstraint,
+                      param::SALTParam)
     # Construct the constraint equation on ∆ω and ∆a.
+    cst.A .= 0
+    cst.b .= 0
     for m = lsol.m_act
         set_constraint!(cst, ∆lsol, lsol, m, mvar_vec[m], rvar)
     end
@@ -436,6 +448,7 @@ function apply_∆lsol!(∆lsol::∆LasingSol,
     activate!(cst, lsol)
     ind = cst.m2_act
     ∆ωa² = cst.A[ind,ind] \ cst.b[ind]
+    # info("cst.A = $(cst.A[ind,ind]), cst.b = $(cst.b[ind]), ∆ωa² = $∆ωa²")
     c = 0  # count
     for m = lsol.m_act
         c += 1
@@ -444,22 +457,51 @@ function apply_∆lsol!(∆lsol::∆LasingSol,
     end
 
     # Update ∆ψ.
+    # info("lsol.ω = $(lsol.ω), lsol.a² = $(lsol.a²), lsol.m_act = $(lsol.m_act)")
     for m = lsol.m_act
-        apply_∆solₘ!(∆lsol, lsol, m, mvar_vec[m], rvar)
+        # info("before apply: ‖lsol.ψ[$m]‖ = $(norm(lsol.ψ[m]))")
+        apply_∆solₘ!(lsol, ∆lsol, m, mvar_vec[m], rvar)
+        # info("after apply: ‖lsol.ψ[$m]‖ = $(norm(lsol.ψ[m]))")
     end
 
     return nothing
 end
 
 
-# Fixed-point equation for lsol.
 # lvar must be already initialized by init_lvar! before starting the fixed-point iteration.
-function update_lsol!(lsol::LasingSol, lvar::LasingVar, CC::AbsMatNumber, param::SALTParam)
-    apply_∆lsol!(lvar.∆lsol, lsol, lvar.mvar_vec, lvar.rvar, lvar.cst, param)
-    init_lvar!(lvar, lsol, CC, param)  # initialize lvar for next step
-end
+update_lsol!(lsol::LasingSol, lvar::LasingVar, CC::AbsMatNumber, param::SALTParam) =
+    update_lsol!(lsol, lvar.∆lsol, lvar.mvar_vec, lvar.rvar, lvar.cst, param)
 
 
 # To use andersonaccel!, implement anderson_SALT! that accepts SALTSol as an initial guess
 # and g! that takes SALTSol and returns SALTSol.  anderson_SALT! must create a version of g!
 # that takes and returns vectors using CatViews.
+
+# I will need to implement `reinterpret` for PETSc vectors to view complex PETSc vectors as
+# a real PETSc vector.
+
+function lsol2rvec(lsol::LasingSol)
+    m_act = lsol.m_act
+    ψr = reinterpret.(Float, lsol.ψ[lsol.m_act])
+
+    return CatView(lsol.ω[lsol.m_act], lsol.a²[lsol.m_act], ψr...)
+end
+
+
+# Notes on applying andersonaccel! to SALT:
+# - First, note that andersonaccel! takes g!(y,x) that updates y without changing x.  On the
+# other hand, our update_lsol! updates the solution in-place.  Therefore, we need to think
+# about how to write the fixed-point equation properly.
+# - Or, we could change andersonaccel! such that it takes g!(x) that updates x in-place.
+
+
+# Used with anderson_steven.jl in usage1d_slab_multimode_anderson_orig.jl.
+# function fixedpt!(y, x, lsol::LasingSol, lvar::LasingVar, CC::AbsMatNumber, param::SALTParam)
+#     rvec = lsol2rvec(lsol)
+#     # info("size(x) = $(size(x)), size(rvec) = $(size(rvec))")
+#     rvec .= x
+#
+#     init_lvar!(lvar, lsol, CC, param)
+#     update_lsol!(lsol, lvar, CC, param)
+#     y .= rvec
+# end

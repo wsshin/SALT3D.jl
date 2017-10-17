@@ -3,7 +3,7 @@
 # index.
 
 export NonlasingSol, NonlasingVar
-export init_nlvar!, norm_nleq, update_nlsol!
+export norm_nleq, update_nlsol!
 
 # Solutions to the nonlasing equation.
 mutable struct NonlasingSol{VC<:AbsVecComplex}  # VC can be PETSc vector
@@ -135,12 +135,24 @@ end
 init_nlvar!(nlvar::NonlasingVar, m::Integer, nlsol::NonlasingSol, D::AbsVecFloat, CC::AbsMatNumber, param::SALTParam) =
     init_modal_var!(nlvar.mvar_vec[m], m, nlsol, D, CC, param)
 
-function norm_nleq(nlsol::NonlasingSol, m::Integer, mvar::NonlasingModalVar)
+function norm_nleq(m::Integer, nlsol::NonlasingSol, mvar::NonlasingModalVar)
     A = mvar.A
     ψ = nlsol.ψ[m]
     return norm(A*ψ)  # 2-norm
 end
-norm_nleq(nlsol::NonlasingSol, m::Integer, nlvar::NonlasingVar) = norm_nleq(nlsol, m, nlvar.mvar_vec[m])
+
+function norm_nleq(m::Integer,
+                   nlsol::NonlasingSol,
+                   nlvar::NonlasingVar,
+                   D::AbsVecFloat,
+                   CC::AbsMatNumber,
+                   param::SALTParam)
+    # Call init_nlvar!, which is necessary for using update_nlsol!, here in order to force
+    # checking the norm before using update_nlsol!.
+    init_nlvar!(nlvar, m, nlsol, D, CC, param)  # use param.D₀ because there is no lasing mode
+
+    return norm_nleq(m, nlsol, nlvar.mvar_vec[m])
+end
 
 
 function update_nlsol!(nlsol::NonlasingSol,

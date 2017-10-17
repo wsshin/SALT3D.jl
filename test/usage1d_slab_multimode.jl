@@ -81,12 +81,9 @@ for dₙₗ = dₙₗₛ+0.05:0.01:dₙₗₑ
     for m = 1:length(nlsol)
         # Newton method for nonlasing modes
         for k = 1:20
-            init_nlvar!(nlvar, m, nlsol, param.D₀, CC, param)  # use param.D₀ because there is no lasing mode
-            lnl = norm_nleq(nlsol, m, nlvar)
+            lnl = norm_nleq(m, nlsol, nlvar, param.D₀, CC, param)  # use param.D₀ because hole-burning is assumed zero
             info("m = $m, ‖nleq‖ = $lnl")
-            if lnl ≤ Base.rtoldefault(Float64)
-                break
-            end
+            lnl ≤ Base.rtoldefault(Float64) && break
             update_nlsol!(nlsol, m, nlvar)
         end
     end
@@ -97,29 +94,16 @@ println()
 info("Find the initial lasing modes.")
 while turnon!(lsol, nlsol)
     # info("nlsol.ω[1] = $(nlsol.ω[1])")
-    ll = 0.0
-    init_lvar!(lvar, lsol, CC, param)
-    for k = 1:100
-        info("k = $k")
-        ll = norm_leq(lsol, lvar)
-        if ll ≤ Base.rtoldefault(Float64)
-            break
-        end
-        update_lsol!(lsol, lvar, CC, param)
-    end
-    println("‖leq‖ = $ll")
+    anderson_salt!(lsol, lvar, CC, param)
     println("ωₗ = $(lsol.ω), aₗ² = $(lsol.a²)")
 
     # Need to solve the nonlasing equation again.
     for m = nlsol.m_act
         # Newton method for nonlasing modes
         for k = 1:20
-            init_nlvar!(nlvar, m, nlsol, lvar.rvar.D, CC, param)
-            lnl = norm_nleq(nlsol, m, nlvar)
+            lnl = norm_nleq(m, nlsol, nlvar, lvar.rvar.D, CC, param)
             info("m = $m, ‖nleq‖ = $lnl")
-            if lnl ≤ Base.rtoldefault(Float64)
-                break
-            end
+            lnl ≤ Base.rtoldefault(Float64) && break
             update_nlsol!(nlsol, m, nlvar)
         end
     end
@@ -133,25 +117,14 @@ check_conflict(lsol, nlsol)
 
 println()
 info("Start simulation.")
-for dₗ = dₙₗₑ+0.05:0.05:dₙₗₑ+3  # too many fixed-point iterations if last value is too large, even if M = 2
+for dₗ = dₙₗₑ+0.5:0.5:dₙₗₑ+3  # too many fixed-point iterations if last value is too large, even if M = 2
     D₀_array .= 0
     D₀_array[:,1:100] .= dₗ
     param.D₀ .= D₀_array[:]
     while true
         # Solve the lasing equation.
         while true
-            ll = 0.0
-            k = 0
-            init_lvar!(lvar, lsol, CC, param)
-            for k = 1:1000
-                # info("k = $k")
-                ll = norm_leq(lsol, lvar)
-                if ll ≤ Base.rtoldefault(Float64)
-                    break
-                end
-                update_lsol!(lsol, lvar, CC, param)
-            end
-            println("‖leq‖ = $ll, $k iteration steps")
+            anderson_salt!(lsol, lvar, CC, param)
             println("dₗ = $dₗ, ωₗ = $(lsol.ω), aₗ² = $(lsol.a²)")
             if !shutdown!(lsol, nlsol)
                 break
@@ -162,12 +135,9 @@ for dₗ = dₙₗₑ+0.05:0.05:dₙₗₑ+3  # too many fixed-point iterations 
         for m = nlsol.m_act
             # Newton method for nonlasing modes
             for k = 1:20
-                init_nlvar!(nlvar, m, nlsol, lvar.rvar.D, CC, param)
-                lnl = norm_nleq(nlsol, m, nlvar)
+                lnl = norm_nleq(m, nlsol, nlvar, lvar.rvar.D, CC, param)
                 println("m = $m, ‖nleq‖ = $lnl")
-                if lnl ≤ Base.rtoldefault(Float64)
-                    break
-                end
+                lnl ≤ Base.rtoldefault(Float64) && break
                 update_nlsol!(nlsol, m, nlvar)
             end
         end
