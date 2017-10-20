@@ -11,26 +11,29 @@ function anderson_salt!(lsol::LasingSol,
                         lvar::LasingVar,
                         CC::AbsMatNumber,
                         param::SALTParam;
-                        m::Integer=10, # number of additional x's kept in algorithm; m = 0 means unaccelerated iteration
-                        τ::Real=1e-2,  # relative tolerance; consider using Base.rtoldefault(Float)
+                        m::Integer=2, # number of additional x's kept in algorithm; m = 0 means unaccelerated iteration
+                        τr::Real=1e-2,  # relative tolerance; consider using Base.rtoldefault(Float)
+                        τa::Real=1e-4,  # absolute tolerance
                         maxit::Int=typemax(Int))  # number of maximum number of iteration steps
+    k = 0
+    leq₀ = norm_leq(lsol, lvar, CC, param)
+    println("Initial residual norm: ‖leq₀‖ = $leq₀")
+    leq₀ ≤ τa && return nothing  # lsol.m_act = [] falls to this as well
+
     m ≥ 0 || throw(ArgumentError("m = $m must be ≥ 0."))
-    τ ≥ 0 || throw(ArgumentError("τ = $τ must be ≥ 0."))
+    τr ≥ 0 || throw(ArgumentError("τr = $τr must be ≥ 0."))
+    τa ≥ 0 || throw(ArgumentError("τa = $τa must be ≥ 0."))
 
     x = lsol2rvec(lsol)
     n = length(x)
     m ≤ n || throw(ArgumentError("m = $m must be > length(lsol2rvec(lsol)) = $n."))
 
-    k = 0
-    leq = norm_leq(lsol, lvar, CC, param)
-    println("Step $k of Anderson: ‖leq‖ = $leq")
-    leq ≤ τ && return nothing
-
     # Storing xold is needed only for the m ≠ 0 case, so executing the following block only
     # for m ≠ 0 would have saved 1 allocation.  However, putting the following block here
     # increase code readability, because doing update_lsol! right after norm_leq is an idiom.
     # m ≠ 0 is rarely used anyway.
-    xold = VecFloat(n)
+    T = eltype(x)
+    xold = Vector{T}(n)
     xold .= x  # xold = x₀
     update_lsol!(lsol, lvar, CC, param)  # x is updated to x₁ = g(x₀)
     # Note we need at least two x's to perform the m ≠ 0 Anderson acceleration.
@@ -38,18 +41,18 @@ function anderson_salt!(lsol::LasingSol,
     if m == 0 # simple fixed-point iteration (no memory)
         for k = 1:maxit-1
             leq = norm_leq(lsol, lvar, CC, param)
-            println("Step $k of Anderson: ‖leq‖ = $leq")
-            leq ≤ τ && break
+            println("k = $k: ‖leq‖ / ‖leq₀‖ = $(leq/leq₀)")
+            leq ≤ max(τr*leq₀, τa) && break
             update_lsol!(lsol, lvar, CC, param)
         end
     else  # m ≠ 0
         # Pre-allocate all of the arrays we will need.  The goal is to allocate once and re-use
         # the storage during the iteration by operating in-place.
-        f = VecFloat(n)
-        ∆X = MatFloat(n, m)  # columns: ∆x's
-        ∆F = MatFloat(n, m)  # columns: ∆f's
-        Q = MatFloat(n, m)  # space for QR factorization
-        β = VecFloat(max(n,m))  # not m, in order to store RHS vector (f: length-n) and overwrite in-place via A_ldiv_B! (max length m)
+        f = Vector{T}(n)
+        ∆X = Matrix{T}(n, m)  # columns: ∆x's
+        ∆F = Matrix{T}(n, m)  # columns: ∆f's
+        Q = Matrix{T}(n, m)  # space for QR factorization
+        β = Vector{T}(max(n,m))  # not m, in order to store RHS vector (f: length-n) and overwrite in-place via A_ldiv_B! (max length m)
 
         # Find x₁ = g(x₀): we need at least two x's to perform the Anderson acceleration.
         col = 1
@@ -77,8 +80,8 @@ function anderson_salt!(lsol::LasingSol,
         # Then we know ∆xₖ₋₁ and ∆fₖ₋₁, which are needed for the Anderson acceleration.
         for k = 1:maxit-1
             leq = norm_leq(lsol, lvar, CC, param)
-            println("Step $k of Anderson: ‖leq‖ = $leq")
-            leq ≤ τ && break
+            println("k = $k: ‖leq‖ / ‖leq₀‖ = $(leq/leq₀)")
+            leq ≤ max(τr*leq₀, τa) && break
 
             # Evaluate g(xₖ).
             xold .= x  # xold = xₖ
@@ -127,7 +130,7 @@ function anderson_salt!(lsol::LasingSol,
 
     if k == maxit  # iteration terminated by consuming maxit steps
         leq = norm_leq(lsol, lvar, CC, param)
-        println("Step $k of Anderson: ‖leq‖ = $leq")
+        println("k = $k: ‖leq‖ / ‖leq₀‖ = $(leq/leq₀)")
     end
 
     return nothing

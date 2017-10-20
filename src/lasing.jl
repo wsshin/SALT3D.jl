@@ -46,6 +46,15 @@ LasingSol(N::Integer, M::Integer) = LasingSol(VecFloat(N), M)
 
 Base.length(lsol::LasingSol) = length(lsol.ψ)
 
+function Base.normalize!(lsol::LasingSol)
+    for m = lsol.m_act
+        ψ = lsol.ψ[m]
+        iₐ = lsol.iₐ[m]
+        ψ ./= ψ[iₐ]  # make ψ[iₐ] = 1
+    end
+end
+
+
 function Base.push!(lsol::LasingSol, m::Integer)
     M = length(lsol)
     lsol.act[m] = true
@@ -483,8 +492,11 @@ update_lsol!(lsol::LasingSol, lvar::LasingVar, CC::AbsMatNumber, param::SALTPara
 function lsol2rvec(lsol::LasingSol)
     m_act = lsol.m_act
     ψr = reinterpret.(Float, lsol.ψ[lsol.m_act])
+    # ψr = lsol.ψ[lsol.m_act]
 
-    return CatView(lsol.ω[lsol.m_act], lsol.a²[lsol.m_act], ψr...)
+    # return CatView(lsol.ω[lsol.m_act], lsol.a²[lsol.m_act], ψr...)
+    return CatView(ψr...)
+    # return CatView(lsol.ω[lsol.m_act], lsol.a²[lsol.m_act])
 end
 
 

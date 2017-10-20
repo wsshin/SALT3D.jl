@@ -1,4 +1,4 @@
-using MaxwellFD3D
+using MaxwellFDM
 
 @testset "salteq" begin
 

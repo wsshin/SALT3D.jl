@@ -1,5 +1,5 @@
 using SALT3D
-using MaxwellFD3D
+using MaxwellFDM
 using PyPlot
 
 Mmax = M = m = 1

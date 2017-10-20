@@ -1,5 +1,5 @@
 using SALT3D
-using MaxwellFD3D
+using MaxwellFDM
 using JLD
 using PyPlot
 
@@ -117,7 +117,7 @@ check_conflict(lsol, nlsol)
 
 println()
 info("Start simulation.")
-for dₗ = dₙₗₑ+0.5:0.5:dₙₗₑ+3  # too many fixed-point iterations if last value is too large, even if M = 2
+for dₗ = dₙₗₑ+0.5:0.5:dₙₗₑ+10  # too many fixed-point iterations if last value is too large, even if M = 2
     D₀_array .= 0
     D₀_array[:,1:100] .= dₗ
     param.D₀ .= D₀_array[:]
@@ -151,19 +151,21 @@ end
 
 
 using PyPlot
-m = 1
-# assert(nlsol.iₐ[m]==lsol₀.iₐ[m]==lsol.iₐ[m])  # error if dₙₗₑ = 0.0 and lsol₀ is uninitialized.
-assert(nlsol.iₐ[m]==lsol.iₐ[m])  # error if dₙₗₑ = 0.0 and lsol₀ is uninitialized.
-w = mod1(nlsol.iₐ[m], 3)  # Cartesian component that is strongest
-
-ψₙₗ₀ₘ = ψₙₗ₀[m]
-ψwₙₗ₀ₘ = view(ψₙₗ₀ₘ, w:3:endof(ψₙₗ₀ₘ))
-
-ψₗ₀ₘ = lsol₀.ψ[m]
-ψwₗ₀ₘ = view(ψₗ₀ₘ, w:3:endof(ψₗ₀ₘ))
-
-ψₗₘ = lsol.ψ[m]
-ψwₗₘ = view(ψₗₘ, w:3:endof(ψₗₘ))
-
 clf()
-plot(1:Nx, abs.(ψwₙₗ₀ₘ), "r-.", 1:Nx, abs.(ψwₗ₀ₘ), "g--", 1:Nx, abs.(ψwₗₘ), "b-")
+c = ["g", "r", "b", "k"]
+for m = lsol.m_act
+    # assert(nlsol.iₐ[m]==lsol₀.iₐ[m]==lsol.iₐ[m])  # error if dₙₗₑ = 0.0 and lsol₀ is uninitialized.
+    assert(nlsol.iₐ[m]==lsol.iₐ[m])  # error if dₙₗₑ = 0.0 and lsol₀ is uninitialized.
+    w = mod1(nlsol.iₐ[m], 3)  # Cartesian component that is strongest
+
+    ψₙₗ₀ₘ = ψₙₗ₀[m]
+    ψwₙₗ₀ₘ = view(ψₙₗ₀ₘ, w:3:endof(ψₙₗ₀ₘ))
+
+    ψₗ₀ₘ = lsol₀.ψ[m]
+    ψwₗ₀ₘ = view(ψₗ₀ₘ, w:3:endof(ψₗ₀ₘ))
+
+    ψₗₘ = lsol.ψ[m]
+    ψwₗₘ = view(ψₗₘ, w:3:endof(ψₗₘ))
+
+    plot(1:Nx, abs.(ψwₙₗ₀ₘ), c[m]":", 1:Nx, abs.(ψwₗ₀ₘ), c[m]"--", 1:Nx, abs.(ψwₗₘ), c[m]"-")
+end

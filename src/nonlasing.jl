@@ -50,7 +50,7 @@ NonlasingSol(N::Integer, M::Integer) = NonlasingSol(VecFloat(N), M)
 Base.length(nlsol::NonlasingSol) = length(nlsol.ψ)
 
 function Base.normalize!(nlsol::NonlasingSol)
-    for m = 1:length(nlsol)
+    for m = nlsol.m_act
         ψ = nlsol.ψ[m]
         iₐ = nlsol.iₐ[m]
         ψ ./= ψ[iₐ]  # make ψ[iₐ] = 1

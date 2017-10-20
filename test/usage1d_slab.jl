@@ -1,5 +1,5 @@
 using SALT3D
-using MaxwellFD3D
+using MaxwellFDM
 using PyPlot
 
 Mmax = 1  # number of modes of interest

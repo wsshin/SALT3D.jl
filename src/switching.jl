@@ -5,7 +5,7 @@ export turnon!, shutdown!, check_conflict
 # Return true if there is a mode to turn on.
 function turnon!(lsol::LasingSol, nlsol::NonlasingSol)
     m = indmax(imag, nlsol.ω, nlsol.m_act)
-    info("turnon: ωₙₗ = $(nlsol.ω), m_actₙₗ = $(nlsol.m_act), m = $m")
+    info("turn on: ωₙₗ = $(nlsol.ω), m_actₙₗ = $(nlsol.m_act), m = $m")
 
     mode2turnon = m≠0
     if mode2turnon
@@ -35,6 +35,8 @@ end
 # Return true if there is any mode to shut down.
 function shutdown!(lsol::LasingSol, nlsol::NonlasingSol)
     m = indmin(identity, lsol.a², lsol.m_act)
+    info("shut down: a²ₗ = $(lsol.a²), m_actₗ = $(lsol.m_act), m = $m")
+
     mode2shutdown = m≠0
     if mode2shutdown
         a² = lsol.a²[m]
