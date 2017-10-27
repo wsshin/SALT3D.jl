@@ -17,7 +17,8 @@ function anderson_salt!(lsol::LasingSol,
                         maxit::Int=typemax(Int))  # number of maximum number of iteration steps
     k = 0
     leq₀ = norm_leq(lsol, lvar, CC, param)
-    println("Initial residual norm: ‖leq₀‖ = $leq₀")
+    println("\tAnderson acceleration:")
+    println("\tInitial residual norm: ‖leq₀‖ = $leq₀")
     leq₀ ≤ τa && return nothing  # lsol.m_act = [] falls to this as well
 
     m ≥ 0 || throw(ArgumentError("m = $m must be ≥ 0."))
@@ -80,7 +81,7 @@ function anderson_salt!(lsol::LasingSol,
         # Then we know ∆xₖ₋₁ and ∆fₖ₋₁, which are needed for the Anderson acceleration.
         for k = 1:maxit-1
             leq = norm_leq(lsol, lvar, CC, param)
-            println("k = $k: ‖leq‖ / ‖leq₀‖ = $(leq/leq₀)")
+            println("\tk = $k: ‖leq‖ / ‖leq₀‖ = $(leq/leq₀)")
             leq ≤ max(τr*leq₀, τa) && break
 
             # Evaluate g(xₖ).
@@ -130,7 +131,7 @@ function anderson_salt!(lsol::LasingSol,
 
     if k == maxit  # iteration terminated by consuming maxit steps
         leq = norm_leq(lsol, lvar, CC, param)
-        println("k = $k: ‖leq‖ / ‖leq₀‖ = $(leq/leq₀)")
+        println("\tk = $k: ‖leq‖ / ‖leq₀‖ = $(leq/leq₀)")
     end
 
     return nothing

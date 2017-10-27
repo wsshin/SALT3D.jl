@@ -5,13 +5,11 @@ export turnon!, shutdown!, check_conflict
 # Return true if there is a mode to turn on.
 function turnon!(lsol::LasingSol, nlsol::NonlasingSol)
     m = indmax(imag, nlsol.ω, nlsol.m_act)
-    info("turn on: ωₙₗ = $(nlsol.ω), m_actₙₗ = $(nlsol.m_act), m = $m")
-
-    mode2turnon = m≠0
-    if mode2turnon
+    hasmode2turnon = m≠0
+    if hasmode2turnon
         ω = nlsol.ω[m]
-        mode2turnon = imag(ω) > 0
-        if mode2turnon  # consider imag(ω) = 0 as nonlasing in order to keep lasing equation minimal
+        hasmode2turnon = imag(ω) > 0
+        if hasmode2turnon  # consider imag(ω) = 0 as nonlasing in order to keep lasing equation minimal
             # Set guess values for the lasing mode
             lsol.ω[m] = real(ω)
             lsol.a²[m] = 0.0
@@ -24,10 +22,11 @@ function turnon!(lsol::LasingSol, nlsol::NonlasingSol)
 
             push!(lsol, m)
             pop!(nlsol, m)
+            println("turned on: m = $m in ω ₙₗ = $(nlsol.ω) with nonlasing m = $(nlsol.m_act)")
         end
     end
 
-    return mode2turnon
+    return hasmode2turnon
 end
 
 
@@ -35,13 +34,11 @@ end
 # Return true if there is any mode to shut down.
 function shutdown!(lsol::LasingSol, nlsol::NonlasingSol)
     m = indmin(identity, lsol.a², lsol.m_act)
-    info("shut down: a²ₗ = $(lsol.a²), m_actₗ = $(lsol.m_act), m = $m")
-
-    mode2shutdown = m≠0
-    if mode2shutdown
+    hasmode2shutdown = m≠0
+    if hasmode2shutdown
         a² = lsol.a²[m]
-        mode2shutdown = a² ≤ 0
-        if mode2shutdown  # consider a² = 0 as nonlasing in order to keep lasing equation minimal
+        hasmode2shutdown = a² ≤ 0
+        if hasmode2shutdown  # consider a² = 0 as nonlasing in order to keep lasing equation minimal
             nlsol.ω[m] = lsol.ω[m]
 
             iₐ = lsol.iₐ[m]
@@ -52,10 +49,11 @@ function shutdown!(lsol::LasingSol, nlsol::NonlasingSol)
 
             push!(nlsol, m)
             pop!(lsol, m)
+            println("shut down: m = $m in a²ₗ = $(lsol.a²) with lasing m = $(lsol.m_act)")
         end
     end
 
-    return mode2shutdown
+    return hasmode2shutdown
 end
 
 

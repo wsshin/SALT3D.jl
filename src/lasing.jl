@@ -492,7 +492,7 @@ update_lsol!(lsol::LasingSol, lvar::LasingVar, CC::AbsMatNumber, param::SALTPara
 function lsol2rvec(lsol::LasingSol)
     m_act = lsol.m_act
     ψr = reinterpret.(Float, lsol.ψ[lsol.m_act])
-    # ψr = lsol.ψ[lsol.m_act]
+    # ψr = lsol.ψ[lsol.m_act]  # complex version
 
     # return CatView(lsol.ω[lsol.m_act], lsol.a²[lsol.m_act], ψr...)
     return CatView(ψr...)

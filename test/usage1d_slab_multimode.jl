@@ -3,6 +3,8 @@ using MaxwellFDM
 using JLD
 using PyPlot
 
+filename = (@__FILE__)[1:end-3]  # file name without ".jl"
+
 # Create a grid.
 L₀ = 1e-3  # 1 mm
 unit = PhysUnit(L₀)
@@ -25,7 +27,7 @@ param = SALTParam(3Nx)
 param.ωₐ = ωₐ
 param.γ⟂ = γ⟂
 
-εslab = 1.2
+εslab = 1.2^2
 εc_array = ones(3, Nx)  # loss is introduced by material, not by radiation
 εc_array[:,1:100] .= εslab
 param.εc .= εc_array[:]
@@ -51,9 +53,9 @@ CC = Cv * Cu
 
 # Choose guess solutions
 # Aₙₗ = spdiagm(param.εc) \ copy(CC)  # A for nonlasing mode
-# Ω², Ψ = eigs(Aₙₗ, nev=8, sigma=(1.3ωₐ)^2)  # 1.3ωₐ gives ω ≈ 70, 100, 130, 160
-# @save "guess_multimode.jld" Ω² Ψ
-@load "guess_multimode.jld"
+# Ω², Ψ = eigs(Aₙₗ, nev=8, sigma=(1.1ωₐ)^2)  # 1.1ωₐ gives ω ≈ 118.307, 92.0472, 65.7617, 144.538
+@save filename * "_guess.jld" Ω² Ψ
+@load filename * "_guess.jld"
 
 ms = 1:2:8
 M = length(ms)  # number of modes of interest
@@ -73,7 +75,9 @@ dₙₗₛ = 0.0
 dₙₗₑ = 0.45
 # dₙₗₑ = 0.0
 
-info("Pump up to the desired starting point.")
+k = 0
+lnl = 0.0
+info("Pump up to desired starting point.")
 for dₙₗ = dₙₗₛ+0.05:0.01:dₙₗₑ
     D₀_array .= 0
     D₀_array[:,1:100] .= dₙₗ
@@ -82,34 +86,34 @@ for dₙₗ = dₙₗₛ+0.05:0.01:dₙₗₑ
         # Newton method for nonlasing modes
         for k = 1:20
             lnl = norm_nleq(m, nlsol, nlvar, param.D₀, CC, param)  # use param.D₀ because hole-burning is assumed zero
-            info("m = $m, ‖nleq‖ = $lnl")
             lnl ≤ Base.rtoldefault(Float64) && break
             update_nlsol!(nlsol, m, nlvar)
         end
+        println("\tm = $m: k = $k, ‖nleq‖ = $lnl")
     end
-    info("dₙₗ = $dₙₗ, ωₙₗ = $(nlsol.ω)")
+    println("dₙₗ = $dₙₗ, ω ₙₗ = $(nlsol.ω)")
 end
 
 println()
-info("Find the initial lasing modes.")
+info("Find initial lasing modes.")
 while turnon!(lsol, nlsol)
     # info("nlsol.ω[1] = $(nlsol.ω[1])")
     anderson_salt!(lsol, lvar, CC, param)
-    println("ωₗ = $(lsol.ω), aₗ² = $(lsol.a²)")
+    println("\tω ₗ = $(lsol.ω), aₗ² = $(lsol.a²)")
 
     # Need to solve the nonlasing equation again.
+    println("\tRecalculate nonlasing modes:")
     for m = nlsol.m_act
         # Newton method for nonlasing modes
         for k = 1:20
             lnl = norm_nleq(m, nlsol, nlvar, lvar.rvar.D, CC, param)
-            info("m = $m, ‖nleq‖ = $lnl")
             lnl ≤ Base.rtoldefault(Float64) && break
             update_nlsol!(nlsol, m, nlvar)
         end
+        println("\tm = $m: k = $k, ‖nleq‖ = $lnl")
     end
 end
-info("Result:")
-println("ωₗ = $(lsol.ω), aₗ² = $(lsol.a²)")
+println("Result: ω ₗ = $(lsol.ω), aₗ² = $(lsol.a²)")
 
 lsol₀ = deepcopy(lsol)
 
@@ -117,31 +121,33 @@ check_conflict(lsol, nlsol)
 
 println()
 info("Start simulation.")
-for dₗ = dₙₗₑ+0.5:0.5:dₙₗₑ+10  # too many fixed-point iterations if last value is too large, even if M = 2
+for dₗ = dₙₗₑ+0.5:0.5:dₙₗₑ+1  # too many fixed-point iterations if last value is too large, even if M = 2
+    println("dₗ = $dₗ:")
     D₀_array .= 0
     D₀_array[:,1:100] .= dₗ
     param.D₀ .= D₀_array[:]
     while true
         # Solve the lasing equation.
         while true
-            anderson_salt!(lsol, lvar, CC, param)
-            println("dₗ = $dₗ, ωₗ = $(lsol.ω), aₗ² = $(lsol.a²)")
+            anderson_salt!(lsol, lvar, CC, param, m=3)
+            println("\tω ₗ = $(lsol.ω), aₗ² = $(lsol.a²)")
             if !shutdown!(lsol, nlsol)
                 break
             end
         end
 
         # Solve the nonlasing equation.
+        println("\tRecalculate nonlasing modes:")
         for m = nlsol.m_act
             # Newton method for nonlasing modes
             for k = 1:20
                 lnl = norm_nleq(m, nlsol, nlvar, lvar.rvar.D, CC, param)
-                println("m = $m, ‖nleq‖ = $lnl")
                 lnl ≤ Base.rtoldefault(Float64) && break
                 update_nlsol!(nlsol, m, nlvar)
             end
+            println("\tm = $m: k = $k, ‖nleq‖ = $lnl")
         end
-        println("dₗ = $dₗ, ωₙₗ = $(nlsol.ω)")
+        println("\tω ₙₗ = $(nlsol.ω)")
         if !turnon!(lsol, nlsol)
             break
         end

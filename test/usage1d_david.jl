@@ -95,3 +95,6 @@ end
 using PyPlot
 
 plot(1:Ngrid, ψguess, 1:Ngrid, 20.*imag.(ψ))
+
+filename = (@__FILE__)[1:end-3]  # without ".jl"
+@save filename * "_result.jld" c
