@@ -1,5 +1,4 @@
-using MaxwellFDM
-@testset "step" begin
+@testset "lasing" begin
 
 # Create a system.
 Ngrid = [3,3,3]
@@ -23,34 +22,37 @@ a² = rand(M)
 Ψ = randn(N,M) + im .* randn(N,M)
 ψ = [Ψ[:,j] for j = 1:M]
 iarray = rand(1:N, M)
-sol = LasingSol(ω, a, ψ, iarray)  # ω = rand(M); this is fine because init_reduced_var does not use ω
+sol = LasingSol(ω, a², ψ, iarray)  # ω = rand(M); this is fine because init_reduced_var does not use ω
+sol.act = fill(true, M)
+sol.m_act = collect(1:M)
 
 # Create ∆solution.
-∆a = rand(M)
+∆a² = rand(M)
 ∆ω = rand(M)
 ∆Ψ = randn(N,M) + im .* randn(N,M)
 ∆ψ = [∆Ψ[:,j] for j = 1:M]
-∆sol = SALT3D.∆LasingSol(∆ω, ∆a, ∆ψ)
+vtemp = similar(∆ψ[1])
+∆sol = SALT3D.∆LasingSol(∆ω, ∆a², ∆ψ, vtemp)
 
 # Check reduced variables.
 hb = Vector{Float64}(N)
-hole_burning!(hb, a, ψ)
+hole_burning!(hb, a², ψ)
 D = D₀ ./ hb
 D′ = -D₀ ./ abs2.(hb)
 ∆D = similar(D)
-SALT3D.∆popinv!(∆D, D′, a, ψ, ∆ψ)
-∇ₐD = [zeros(N) for m = 1:M]
-SALT3D.∇ₐ₂popinv!(∇ₐD, D′, a², ψ)
+SALT3D.∆popinv!(∆D, D′, ∆sol, sol)
+∇ₐ₂D = [zeros(N) for m = 1:M]
+SALT3D.∇ₐ₂popinv!(∇ₐ₂D, D′, sol)
 rvar = SALT3D.LasingReducedVar(N, M)
 SALT3D.init_reduced_var!(rvar, ∆sol, sol, param)
 @testset "reduced variables" begin
     @test rvar.D ≈ D
     @test rvar.D′ ≈ D′
-    @test ∆D ≈ D′ .* (real.(conj.(Ψ[:,1:M]) .* ∆Ψ) * 2abs2.(a[1:M]))
+    @test ∆D ≈ D′ .* (real.(conj.(Ψ[:,1:M]) .* ∆Ψ) * 2a²[1:M])
     @test rvar.∆D ≈ ∆D
-    ∇ₐD_mat = D′ .* (abs2.(Ψ[:,1:M]) .* 2a[1:M].')
-    @test ∇ₐD ≈ [∇ₐD_mat[:,j] for j = 1:M]
-    @test rvar.∇ₐD ≈ ∇ₐD
+    ∇ₐ₂D_mat = D′ .* abs2.(Ψ[:,1:M])
+    @test ∇ₐ₂D ≈ [∇ₐ₂D_mat[:,j] for j = 1:M]
+    @test rvar.∇ₐ₂D ≈ ∇ₐ₂D
 end
 
 # Check modal variables.

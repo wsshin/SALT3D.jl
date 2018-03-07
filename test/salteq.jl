@@ -16,7 +16,7 @@ D₀ = fill(0.01, N)
 D₀[ind_in] .= 1.0
 
 M = 4
-a = rand(M)
+a² = rand(M)
 Ψ = randn(N,M) + im .* randn(N,M)
 ψ = [Ψ[:,j] for j = 1:M]
 
@@ -25,9 +25,9 @@ a = rand(M)
 @test γ′ ≈ -γ^2 / γ⟂
 
 hb = Vector{Float64}(N)
-hole_burning!(hb, a, ψ)
+hole_burning!(hb, a², ψ)
 @test all(hb .> 1)
-@test hb ≈ 1 + abs2.(Ψ) * a.^2
+@test hb ≈ 1 + abs2.(Ψ) * a²
 
 # Create A.
 Ce = create_curl(PRIM, Ngrid)
