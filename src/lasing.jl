@@ -14,7 +14,7 @@ mutable struct LasingSol{VC<:AbsVecComplex}  # VC can be PETSc vector
     ψ::Vector{VC}  # M complex vectors: normalized modes
     iₐ::VecInt  # M integers: row indices where amplitudes are measured
     act::VecBool  # act[m] is true if mode m is active (i.e., lasing)
-    m_act::VecInt  # vector of active (i.e., lasing) mode indices
+    m_act::VecInt  # vector of active (i.e., lasing) mode indices; collection of m such that act[m] == true
     function LasingSol{VC}(ω::AbsVecReal,
                            a²::AbsVecReal,
                            ψ::AbsVec{<:AbsVecNumber},
@@ -41,7 +41,7 @@ LasingSol(ω::AbsVecReal, a²::AbsVecReal, ψ::AbsVec{VC}, iₐ::AbsVecInteger) 
 # To do: check if the following works for vtemp of PETSc vector type.
 LasingSol(vtemp::AbsVec,  # template vector with N entries
           M::Integer) =
-    LasingSol(zeros(M), fill(-Inf,M), [similar(vtemp,CFloat).=0 for m = 1:M], zeros(Int,M))
+    LasingSol(zeros(M), zeros(M), [similar(vtemp,CFloat).=0 for m = 1:M], zeros(Int,M))
 LasingSol(N::Integer, M::Integer) = LasingSol(VecFloat(N), M)
 
 Base.length(lsol::LasingSol) = length(lsol.ψ)
@@ -52,25 +52,6 @@ function Base.normalize!(lsol::LasingSol)
         iₐ = lsol.iₐ[m]
         ψ ./= ψ[iₐ]  # make ψ[iₐ] = 1
     end
-end
-
-
-function Base.push!(lsol::LasingSol, m::Integer)
-    M = length(lsol)
-    lsol.act[m] = true
-    lsol.m_act = (1:M)[lsol.act]
-
-    return nothing
-end
-
-function Base.pop!(lsol::LasingSol, m::Integer)
-    M = length(lsol)
-    lsol.act[m] = false
-    lsol.m_act = (1:M)[lsol.act]
-
-    lsol.ψ[m] .= 0  # good for compressing data when writing in file
-
-    return nothing
 end
 
 
@@ -309,7 +290,7 @@ function norm_leq(lsol::LasingSol, mvar_vec::AbsVec{<:LasingModalVar})
         leq² = max(leq², sum(abs2,A*ψ))  # 2-norm for each mode, 1-norm between modes
     end
 
-    return √leq²
+    return √leq²  # return 0.0 if lsol.m_act is empty
 end
 
 function norm_leq(lsol::LasingSol, lvar::LasingVar, CC::AbsMatNumber, param::SALTParam)
@@ -438,7 +419,7 @@ end
 # number of lasing modes.  Therefore, try not to call this function unnecessarily.
 #
 # init_lvar! must be called before using this function to make lvar prepared.  However,
-# init_lval! is not exported in order to force checking the norm by norm_leq to avoid
+# init_lvar! is not exported in order to force checking the norm by norm_leq to avoid
 # calling this function when the norm is small enough.
 function update_lsol!(lsol::LasingSol,
                       ∆lsol::∆LasingSol,
@@ -494,8 +475,8 @@ function lsol2rvec(lsol::LasingSol)
     ψr = reinterpret.(Float, lsol.ψ[lsol.m_act])
     # ψr = lsol.ψ[lsol.m_act]  # complex version
 
-    # return CatView(lsol.ω[lsol.m_act], lsol.a²[lsol.m_act], ψr...)
-    return CatView(ψr...)
+    return CatView(lsol.ω[lsol.m_act], lsol.a²[lsol.m_act], ψr...)
+    # return CatView(ψr...)
     # return CatView(lsol.ω[lsol.m_act], lsol.a²[lsol.m_act])
 end
 

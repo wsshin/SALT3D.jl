@@ -11,7 +11,7 @@ mutable struct NonlasingSol{VC<:AbsVecComplex}  # VC can be PETSc vector
     ψ::Vector{VC}  # M complex vectors: normalized modes
     iₐ::VecInt  # M integers: row indices where amplitudes are measured
     act::VecBool  # act[m] is true if mode m is active (i.e., nonlasing)
-    m_act::VecInt  # vector of active (i.e., nonlasing) mode indices
+    m_act::VecInt  # vector of active (i.e., nonlasing) mode indices; collection of m such that act[m] == true
     function NonlasingSol{VC}(ω::AbsVecNumber,
                               ψ::AbsVec{<:AbsVecNumber},
                               iₐ::AbsVecInteger) where {VC<:AbsVecComplex}
@@ -56,25 +56,6 @@ function Base.normalize!(nlsol::NonlasingSol)
         ψ ./= ψ[iₐ]  # make ψ[iₐ] = 1
     end
 end
-
-function Base.push!(nlsol::NonlasingSol, m::Integer)
-    M = length(nlsol)
-    nlsol.act[m] = true
-    nlsol.m_act = (1:M)[nlsol.act]
-
-    return nothing
-end
-
-function Base.pop!(nlsol::NonlasingSol, m::Integer)
-    M = length(nlsol)
-    nlsol.act[m] = false
-    nlsol.m_act = (1:M)[nlsol.act]
-
-    nlsol.ψ[m] .= 0  # good for compressing data when writing in file
-
-    return nothing
-end
-
 
 # nonlasing reduced bar: D
 # nonlasing modal var: γ, γ′, εeff, A
@@ -124,10 +105,11 @@ function init_modal_var!(mvar::NonlasingModalVar,
     # Below, avoid allocations and use preallocated arrays in mvar.
     ε = mvar.∂f∂ω  # temporary storage for effective permitivity: εc + γ D
     ε .= param.εc .+ γ .* D
+    # info("maximum(D) = $(maximum(D)), maximum(|εc|) = $(maximum(abs(param.εc)))")
 
     # Move A, rowA⁻¹ᵢₐ away.  These need to be used only
     create_A!(mvar.A, CC, ω, ε)
-    mvar.∂f∂ω .= (2ω .* param.εc + (2ω*γ + ω^2*γ′) .* D) .* ψ  # derivative of nonlasing equation function w.r.t ω
+    mvar.∂f∂ω .= (2ω .* param.εc + (2ω*γ + ω^2*γ′) .* D) .* ψ  # derivative of nonlasing equation function w.r.t. ω
 
     return nothing
 end
@@ -144,12 +126,12 @@ end
 function norm_nleq(m::Integer,
                    nlsol::NonlasingSol,
                    nlvar::NonlasingVar,
-                   D::AbsVecFloat,
+                   D::AbsVecFloat,  # use param.D₀ (lsol.lvar.D) for calculation without (with) hole-burning term
                    CC::AbsMatNumber,
                    param::SALTParam)
-    # Call init_nlvar!, which is necessary for using update_nlsol!, here in order to force
+    # Call init_nlvar! here, which is necessary for using update_nlsol!, in order to force
     # checking the norm before using update_nlsol!.
-    init_nlvar!(nlvar, m, nlsol, D, CC, param)  # use param.D₀ because there is no lasing mode
+    init_nlvar!(nlvar, m, nlsol, D, CC, param)
 
     return norm_nleq(m, nlsol, nlvar.mvar_vec[m])
 end

@@ -1,5 +1,60 @@
 export turnon!, shutdown!, check_conflict
 
+# Nonlasing -> Lasing: take the mth nonlasing mode and use it to set the guess information
+# about the mth lasing mode.
+function Base.push!(lsol::LasingSol, m::Integer, nlsol::NonlasingSol)
+    lsol.ω[m] = real(nlsol.ω[m])
+    lsol.a²[m] = 0
+    iₐ = lsol.iₐ[m] = nlsol.iₐ[m]
+    ψ = lsol.ψ[m] .= nlsol.ψ[m]
+    assert(ψ[iₐ] == 1)  # make sure ψₘ is already normalized
+
+    M = length(lsol)
+    lsol.act[m] = true
+    lsol.m_act = (1:M)[lsol.act]
+
+    return nothing
+end
+
+function Base.pop!(lsol::LasingSol, m::Integer)
+    lsol.a²[m] = 0  # indicate this mode is nonlasing
+    lsol.ψ[m] .= 0  # good for compressing data when writing in file
+
+    M = length(lsol)
+    lsol.act[m] = false
+    lsol.m_act = (1:M)[lsol.act]
+
+    return nothing
+end
+
+
+# Lasing -> Nonlasing: take the mth lasing mode and use it to set the guess information
+# about the mth nonlasing mode.
+function Base.push!(nlsol::NonlasingSol, m::Integer, lsol::LasingSol)
+    nlsol.ω[m] = lsol.ω[m]  # scalar
+    iₐ = nlsol.iₐ[m] = lsol.iₐ[m]  # scalar
+    ψ = nlsol.ψ[m] .= lsol.ψ[m]  # vector
+    assert(ψ[iₐ] == 1)  # make sure ψₘ is already normalized
+
+    M = length(nlsol)
+    nlsol.act[m] = true
+    nlsol.m_act = (1:M)[nlsol.act]
+
+    return nothing
+end
+
+function Base.pop!(nlsol::NonlasingSol, m::Integer)
+    nlsol.ω[m] = real(nlsol.ω[m])  # indicate this mode is lasing
+    nlsol.ψ[m] .= 0  # good for compressing data when writing in file
+
+    M = length(nlsol)
+    nlsol.act[m] = false
+    nlsol.m_act = (1:M)[nlsol.act]
+
+    return nothing
+end
+
+
 # Prepare LasingSol by turning on the nonlasing mode with the largest positive imaginary
 # part, if any.  See Sec. III.D of the SALT paper.
 # Return true if there is a mode to turn on.
@@ -7,22 +62,11 @@ function turnon!(lsol::LasingSol, nlsol::NonlasingSol)
     m = indmax(imag, nlsol.ω, nlsol.m_act)
     hasmode2turnon = m≠0
     if hasmode2turnon
-        ω = nlsol.ω[m]
-        hasmode2turnon = imag(ω) > 0
-        if hasmode2turnon  # consider imag(ω) = 0 as nonlasing in order to keep lasing equation minimal
-            # Set guess values for the lasing mode
-            lsol.ω[m] = real(ω)
-            lsol.a²[m] = 0.0
-
-            iₐ = nlsol.iₐ[m]
-            lsol.iₐ[m] = iₐ
-
-            ψ = nlsol.ψ[m]
-            lsol.ψ[m] .= ψ ./ ψ[iₐ]  # make ψ[iₐ] = 1
-
-            push!(lsol, m)
+        hasmode2turnon = imag(nlsol.ω[m]) > 0  # consider imag(ω) = 0 as nonlasing in order to keep lasing equations minimal
+        if hasmode2turnon
+            println("turn on: mode $m in ω ₙₗ = $(nlsol.ω)")
+            push!(lsol, m, nlsol)
             pop!(nlsol, m)
-            println("turned on: m = $m in ω ₙₗ = $(nlsol.ω) with nonlasing m = $(nlsol.m_act)")
         end
     end
 
@@ -36,20 +80,11 @@ function shutdown!(lsol::LasingSol, nlsol::NonlasingSol)
     m = indmin(identity, lsol.a², lsol.m_act)
     hasmode2shutdown = m≠0
     if hasmode2shutdown
-        a² = lsol.a²[m]
-        hasmode2shutdown = a² ≤ 0
-        if hasmode2shutdown  # consider a² = 0 as nonlasing in order to keep lasing equation minimal
-            nlsol.ω[m] = lsol.ω[m]
-
-            iₐ = lsol.iₐ[m]
-            nlsol.iₐ[m] = iₐ
-
-            ψ = lsol.ψ[m]
-            nlsol.ψ[m] .= ψ ./ ψ[iₐ]  # make ψ[iₐ] = 1
-
-            push!(nlsol, m)
+        hasmode2shutdown = lsol.a²[m] ≤ 0  # consider a² = 0 as nonlasing in order to keep lasing equations minimal
+        if hasmode2shutdown
+            println("shut down: mode $m in a²ₗ = $(lsol.a²)")
+            push!(nlsol, m, lsol)
             pop!(lsol, m)
-            println("shut down: m = $m in a²ₗ = $(lsol.a²) with lasing m = $(lsol.m_act)")
         end
     end
 
