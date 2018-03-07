@@ -14,11 +14,12 @@ function anderson_salt!(lsol::LasingSol,
                         m::Integer=2, # number of additional x's kept in algorithm; m = 0 means unaccelerated iteration
                         τr::Real=1e-2,  # relative tolerance; consider using Base.rtoldefault(Float)
                         τa::Real=1e-4,  # absolute tolerance
-                        maxit::Int=typemax(Int))  # number of maximum number of iteration steps
+                        maxit::Int=typemax(Int),  # number of maximum number of iteration steps
+                        verbose::Bool=true)
     k = 0
     leq₀ = norm_leq(lsol, lvar, CC, param)
-    println("\tAnderson acceleration:")
-    println("\tInitial residual norm: ‖leq₀‖ = $leq₀")
+    verbose && println("\tAnderson acceleration:")
+    verbose && println("\tInitial residual norm: ‖leq₀‖ = $leq₀")
     leq₀ ≤ τa && return nothing  # lsol.m_act = [] falls to this as well
 
     m ≥ 0 || throw(ArgumentError("m = $m must be ≥ 0."))
@@ -42,7 +43,7 @@ function anderson_salt!(lsol::LasingSol,
     if m == 0 # simple fixed-point iteration (no memory)
         for k = 1:maxit-1
             leq = norm_leq(lsol, lvar, CC, param)
-            println("k = $k: ‖leq‖ / ‖leq₀‖ = $(leq/leq₀)")
+            verbose && println("k = $k: ‖leq‖ / ‖leq₀‖ = $(leq/leq₀)")
             leq ≤ max(τr*leq₀, τa) && break
             update_lsol!(lsol, lvar, CC, param)
         end
@@ -81,7 +82,7 @@ function anderson_salt!(lsol::LasingSol,
         # Then we know ∆xₖ₋₁ and ∆fₖ₋₁, which are needed for the Anderson acceleration.
         for k = 1:maxit-1
             leq = norm_leq(lsol, lvar, CC, param)
-            println("\tk = $k: ‖leq‖ / ‖leq₀‖ = $(leq/leq₀)")
+            verbose && println("\tk = $k: ‖leq‖ / ‖leq₀‖ = $(leq/leq₀)")
             leq ≤ max(τr*leq₀, τa) && break
 
             # Evaluate g(xₖ).
@@ -131,7 +132,7 @@ function anderson_salt!(lsol::LasingSol,
 
     if k == maxit  # iteration terminated by consuming maxit steps
         leq = norm_leq(lsol, lvar, CC, param)
-        println("\tk = $k: ‖leq‖ / ‖leq₀‖ = $(leq/leq₀)")
+        verbose && println("\tk = $k: ‖leq‖ / ‖leq₀‖ = $(leq/leq₀)")
     end
 
     return nothing
