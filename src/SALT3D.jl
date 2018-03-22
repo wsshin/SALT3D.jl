@@ -1,6 +1,6 @@
 module SALT3D
 
-using CatViews
+using MaxwellFDM, GeometryPrimitives, CatViews, StaticArrays
 
 # package code goes here
 const Float = typeof(0.0)  # use Float = Float128 for quadruple precision in the future
@@ -36,7 +36,8 @@ include("base.jl")
 include("salteq.jl")
 include("lasing.jl")
 include("nonlasing.jl")
-include("switching.jl")
 include("anderson.jl")
+include("switching.jl")
+include("simulation.jl")
 
 end # module

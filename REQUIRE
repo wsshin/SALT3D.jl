@@ -1,3 +1,4 @@
 julia 0.6
-MaxwellFDM
+MaxwellFDM  # not used to develop code, but used in usages
+GeometryPrimitives
 CatViews
