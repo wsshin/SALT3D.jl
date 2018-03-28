@@ -434,6 +434,10 @@ function apply_∆solₘ!(lsol::LasingSol,
     set_phase!(ps, Pardiso.SOLVE_ITERATIVE_REFINE)
     # set_solver!(ps, Pardiso.ITERATIVE_SOLVER)
     pardiso(ps, ψ, A_pardiso, vtemp)
+
+    # Free the PARDISO data structures.
+    set_phase!(ps, Pardiso.RELEASE_ALL)
+    pardiso(ps)
     ### Pardiso ends.
 
     iₐ = lsol.iₐ[m]

@@ -181,6 +181,10 @@ function update_nlsol!(nlsol::NonlasingSol,
     set_phase!(ps, Pardiso.SOLVE_ITERATIVE_REFINE)
     # set_solver!(ps, Pardiso.ITERATIVE_SOLVER)
     pardiso(ps, v, A_pardiso, ∂f∂ω)
+
+    # Free the PARDISO data structures.
+    set_phase!(ps, Pardiso.RELEASE_ALL)
+    pardiso(ps)
     ### Pardiso ends.
 
     ∆ω = ψ[iₐ] / v[iₐ]
