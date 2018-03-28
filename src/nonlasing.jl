@@ -12,28 +12,28 @@ mutable struct NonlasingSol{VC<:AbsVecComplex}  # VC can be PETSc vector
     iₐ::VecInt  # M integers: row indices where amplitudes are measured
     act::VecBool  # act[m] is true if mode m is active (i.e., nonlasing)
     m_act::VecInt  # vector of active (i.e., nonlasing) mode indices; collection of m such that act[m] == true
+    vtemp::VC  # temporary storage for N complex numbers; note its contents can change at any point
     function NonlasingSol{VC}(ω::AbsVecNumber,
                               ψ::AbsVec{<:AbsVecNumber},
-                              iₐ::AbsVecInteger) where {VC<:AbsVecComplex}
+                              iₐ::AbsVecInteger,
+                              vtemp::AbsVecNumber) where {VC<:AbsVecComplex}
         # Test sizes.
         length(ω)==length(ψ)==length(iₐ) ||
             throw(ArgumentError("length(ω) = $(length(ω)), length(ψ) = $(length(ψ)),
                                  length(iₐ) = $(length(iₐ)) must be the same."))
 
         M = length(ψ)
-        if M > 0
-            N = length(ψ[1])
-            for m = 2:M
-                length(ψ[m]) == N ||
-                    throw(ArgumentError("length(ψ[$m]) = $(length(ψ[m])) and length(ψ[1]) = $N must be the same."))
-            end
+        N = length(vtemp)
+        for m = 1:M
+            length(ψ[m]) == N ||
+                throw(ArgumentError("length(ψ[$m]) = $(length(ψ[m])) and length(vtemp) = $N must be the same."))
         end
 
-        return new(ω, ψ, iₐ, fill(true,M), VecInt(1:M))
+        return new(ω, ψ, iₐ, fill(true,M), VecInt(1:M), vtemp)
     end
 end
-NonlasingSol(ω::AbsVecNumber, ψ::AbsVec{VC}, iₐ::AbsVecInteger) where {VC<:AbsVecComplex} =
-    NonlasingSol{VC}(ω, ψ, iₐ)
+NonlasingSol(ω::AbsVecNumber, ψ::AbsVec{VC}, iₐ::AbsVecInteger, vtemp::VC=similar(ψ[1])) where {VC<:AbsVecComplex} =
+    NonlasingSol{VC}(ω, ψ, iₐ, vtemp)
 NonlasingSol(ω::AbsVecNumber, Ψ::AbsMatComplex, iₐ::AbsVecInteger) =
     (M = length(ω); NonlasingSol(ω, [Ψ[:,m] for m = 1:M], iₐ))
 
@@ -149,6 +149,7 @@ function update_nlsol!(nlsol::NonlasingSol,
     ∂f∂ω = mvar.∂f∂ω
     # v = mvar.A \ ∂f∂ω
     ### Pardiso begins.
+    v = nlsol.vtemp
     ps = PardisoSolver()
     set_msglvl!(ps, Pardiso.MESSAGE_LEVEL_ON)
 
