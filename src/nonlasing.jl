@@ -37,6 +37,7 @@ NonlasingSol(ω::AbsVecNumber, ψ::AbsVec{VC}, iₐ::AbsVecInteger) where {VC<:A
 NonlasingSol(ω::AbsVecNumber, Ψ::AbsMatComplex, iₐ::AbsVecInteger) =
     (M = length(ω); NonlasingSol(ω, [Ψ[:,m] for m = 1:M], iₐ))
 
+NonlasingSol(ω::Number, ψ::AbsVecComplex) = NonlasingSol([ω], [ψ])
 NonlasingSol(ω::AbsVecNumber, ψ::AbsVec{<:AbsVecComplex}) = NonlasingSol(ω, ψ, indmax.(abs, ψ))
 NonlasingSol(ω::AbsVecNumber, Ψ::AbsMatComplex) = (M = length(ω); NonlasingSol(ω, [Ψ[:,m] for m = 1:M]))
 
