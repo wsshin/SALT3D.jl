@@ -1,6 +1,6 @@
 module SALT3D
 
-using MaxwellFDM, GeometryPrimitives, CatViews, StaticArrays
+using MaxwellFDM, GeometryPrimitives, Pardiso, CatViews, StaticArrays
 
 # package code goes here
 const Float = typeof(0.0)  # use Float = Float128 for quadruple precision in the future
