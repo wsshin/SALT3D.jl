@@ -400,7 +400,42 @@ function apply_∆solₘ!(lsol::LasingSol,
     # # ∆ψ[lsol.iₐ[m]] = 0
 
     # info("‖A‖₁ = $(norm(mvar.A,1)), ‖vtemp‖ = $(norm(vtemp))")
-    ψ .= mvar.A \ vtemp
+
+    # ψ .= mvar.A \ vtemp
+    ### Pardiso begins.
+    ps = PardisoSolver()
+    set_msglvl!(ps, Pardiso.MESSAGE_LEVEL_ON)
+
+    # First set the matrix type to handle general real symmetric matrices
+    T = eltype(mvar.A)
+    if T<:Real
+        set_matrixtype!(ps, Pardiso.REAL_NONSYM)
+    else  # T<:Complex
+        set_matrixtype!(ps, Pardiso.COMPLEX_NONSYM)
+    end
+
+    # Initialize the default settings with the current matrix type
+    pardisoinit(ps)
+
+    # Get the correct matrix to be sent into the pardiso function.
+    # :N for normal matrix, :T for transpose, :C for conjugate
+    A_pardiso = get_matrix(ps, mvar.A, :N)
+
+    # Analyze the matrix and compute a symbolic factorization.
+    set_phase!(ps, Pardiso.ANALYSIS)
+    set_perm!(ps, randperm(size(mvar.A, 1)))
+    pardiso(ps, A_pardiso, vtemp)
+
+    # Compute the numeric factorization.
+    set_phase!(ps, Pardiso.NUM_FACT)
+    pardiso(ps, A_pardiso, vtemp)
+
+    # Compute the solutions X using the symbolic factorization.
+    set_phase!(ps, Pardiso.SOLVE_ITERATIVE_REFINE)
+    # set_solver!(ps, Pardiso.ITERATIVE_SOLVER)
+    pardiso(ps, ψ, A_pardiso, vtemp)
+    ### Pardiso ends.
+
     iₐ = lsol.iₐ[m]
     ψ ./= ψ[iₐ]
 

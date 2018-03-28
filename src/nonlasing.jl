@@ -146,7 +146,40 @@ function update_nlsol!(nlsol::NonlasingSol,
     ψᵢₐold = ψ[iₐ]
 
     ∂f∂ω = mvar.∂f∂ω
-    v = mvar.A \ ∂f∂ω
+    # v = mvar.A \ ∂f∂ω
+    ### Pardiso begins.
+    ps = PardisoSolver()
+    set_msglvl!(ps, Pardiso.MESSAGE_LEVEL_ON)
+
+    # First set the matrix type to handle general real symmetric matrices
+    T = eltype(mvar.A)
+    if T<:Real
+        set_matrixtype!(ps, Pardiso.REAL_NONSYM)
+    else  # T<:Complex
+        set_matrixtype!(ps, Pardiso.COMPLEX_NONSYM)
+    end
+
+    # Initialize the default settings with the current matrix type
+    pardisoinit(ps)
+
+    # Get the correct matrix to be sent into the pardiso function.
+    # :N for normal matrix, :T for transpose, :C for conjugate
+    A_pardiso = get_matrix(ps, mvar.A, :N)
+
+    # Analyze the matrix and compute a symbolic factorization.
+    set_phase!(ps, Pardiso.ANALYSIS)
+    set_perm!(ps, randperm(size(mvar.A, 1)))
+    pardiso(ps, A_pardiso, ∂f∂ω)
+
+    # Compute the numeric factorization.
+    set_phase!(ps, Pardiso.NUM_FACT)
+    pardiso(ps, A_pardiso, ∂f∂ω)
+
+    # Compute the solutions X using the symbolic factorization.
+    set_phase!(ps, Pardiso.SOLVE_ITERATIVE_REFINE)
+    # set_solver!(ps, Pardiso.ITERATIVE_SOLVER)
+    pardiso(ps, v, A_pardiso, ∂f∂ω)
+    ### Pardiso ends.
 
     ∆ω = ψ[iₐ] / v[iₐ]
     nlsol.ω[m] += ∆ω
