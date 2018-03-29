@@ -35,7 +35,7 @@ function solve_nleq!(nlsol::NonlasingSol,
                      CC::AbsMatNumber,
                      param::SALTParam;
                      τ::Real=Base.rtoldefault(Float64),
-                     maxit::Integer=100,  # maximum number of Newton iteration steps
+                     maxit::Integer=20,  # maximum number of Newton iteration steps
                      verbose::Bool=true)
     # Below, lvar must be initialized already by init_lvar!, typically by norm_leq
     # within anderson_salt!
