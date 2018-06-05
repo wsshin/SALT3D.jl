@@ -1,5 +1,5 @@
 function Base.indmax(f::Function, v::AbsVec)
-    ind = 0
+    ind = 0  # return 0 if v is empty
     val = -Inf
     for n = 1:length(v)
         if f(v[n]) ≥ val  # ≥ rather than > to prevent returning 0 when v has -Inf
@@ -12,7 +12,7 @@ function Base.indmax(f::Function, v::AbsVec)
 end
 
 function Base.indmax(f::Function, v::AbsVec, indv::AbsVecInteger)
-    ind = 0
+    ind = 0  # return 0 if v is empty
     val = -Inf
     for n = indv
         if f(v[n]) ≥ val  # ≥ rather than > to prevent returning 0 when v has -Inf
@@ -25,7 +25,7 @@ function Base.indmax(f::Function, v::AbsVec, indv::AbsVecInteger)
 end
 
 function Base.indmin(f::Function, v::AbsVec)
-    ind = 0
+    ind = 0  # return 0 if v is empty
     val = Inf
     for n = 1:length(v)
         if f(v[n]) ≤ val  # ≤ rather than < to prevent returning 0 when v has -Inf
@@ -38,7 +38,7 @@ function Base.indmin(f::Function, v::AbsVec)
 end
 
 function Base.indmin(f::Function, v::AbsVec, indv::AbsVecInteger)
-    ind = 0
+    ind = 0  # return 0 if v is empty
     val = Inf
     for n = indv
         if f(v[n]) ≤ val  # ≤ rather than < to prevent returning 0 when v has -Inf
