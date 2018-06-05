@@ -20,7 +20,7 @@ function anderson_salt!(lsol::LasingSol,
     leq₀ = norm_leq(lsol, lvar, CC, param)
     verbose && println("\tAnderson acceleration:")
     verbose && println("\tInitial residual norm: ‖leq₀‖ = $leq₀")
-    leq₀ ≤ τa && return nothing  # lsol.m_act = [] falls to this as well
+    leq₀ ≤ τa && return k, leq₀  # lsol.m_act = [] falls to this as well
 
     m ≥ 0 || throw(ArgumentError("m = $m must be ≥ 0."))
     τr ≥ 0 || throw(ArgumentError("τr = $τr must be ≥ 0."))
@@ -133,7 +133,8 @@ function anderson_salt!(lsol::LasingSol,
     if k == maxit  # iteration terminated by consuming maxit steps
         leq = norm_leq(lsol, lvar, CC, param)
         verbose && println("\tk = $k: ‖leq‖ / ‖leq₀‖ = $(leq/leq₀)")
+        warning("Anderson reached maxit = $maxit and didn't converge.")
     end
 
-    return nothing
+    return k, leq
 end

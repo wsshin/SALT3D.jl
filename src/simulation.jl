@@ -18,12 +18,15 @@ function solve_nleq!(nlsol::NonlasingSol,
         # Newton method for nonlasing modes
         k = 0
         lnl = 0.0
+        tic()
         for k = 1:maxit
             lnl = norm_nleq(m, nlsol, nlvar, D, CC, param)
             lnl ≤ τ && break
             update_nlsol!(nlsol, m, nlvar)
         end
-        verbose && println("\tmode $m: # of Newton steps = $k, ‖nleq‖ = $lnl")
+        t_newton = toq()
+        # verbose && println("\tmode $m: Newton steps = $k, ‖nleq‖ = $lnl")
+        verbose && @printf("\tmode %d: Newton steps = %d (%f sec), ‖nleq‖ = %.3e\n", m, k, t_newton, lnl)
     end
 end
 
@@ -45,12 +48,15 @@ function solve_nleq!(nlsol::NonlasingSol,
         # Newton method for nonlasing modes
         k = 0
         lnl = 0.0
+        tic()
         for k = 1:maxit
             lnl = norm_nleq(m, nlsol, nlvar, D, CC, param)
             lnl ≤ τ && break
             update_nlsol!(nlsol, m, nlvar)
         end
-        verbose && println("\tmode $m: # of Newton steps = $k, ‖nleq‖ = $lnl")
+        t_newton = toq()
+        # verbose && println("\tmode $m: Newton steps = $k, ‖nleq‖ = $lnl")
+        verbose && @printf("\tmode %d: Newton steps = %d (%f sec), ‖nleq‖ = %.3e\n", m, k, t_newton, lnl)
     end
 end
 
@@ -71,18 +77,21 @@ function pumpup!(lsol::LasingSol, lvar::LasingVar,
     for d = dvec
         setD₀!(param, d)
         solve_nleq!(nlsol, nlvar, CC, param, τ=τ_newton, maxit=maxit_newton, verbose=verbose)
-        verbose && println("d = $d, ω ₙₗ = $(nlsol.ω)")
+        verbose && println("d = $d, ω ₙₗ = $(string(nlsol.ω)[17:end])")  # 17 is to skip header "Complex{Float64}"
     end
 
     println("\nFind lasing modes at pumped point:")
     while turnon!(lsol, nlsol)
-        solve_leq!(lsol, lvar, CC, param, τr=τr_anderson, τa=τa_anderson, maxit=maxit_anderson, verbose=verbose)
-        verbose && println("\tω ₗ = $(lsol.ω), aₗ² = $(lsol.a²)")
+        tic()
+        n_anderson, ll = solve_leq!(lsol, lvar, CC, param, τr=τr_anderson, τa=τa_anderson, maxit=maxit_anderson, verbose=verbose)
+        t_anderson = toq()
+        # verbose && println("\tAnderson steps = $k, ‖leq‖ = $ll, ω ₗ = $(lsol.ω), aₗ² = $(lsol.a²)")
+        verbose && @printf("\tAnderson steps = %d (%f sec), ‖leq‖ = %.3e, ", n_anderson, t_anderson, ll); println("ω ₗ = $(lsol.ω), aₗ² = $(lsol.a²)")
 
         # Need to solve the nonlasing equation again.
         println("\tRecalculate nonlasing modes:")
         solve_nleq!(nlsol, nlvar, lvar, CC, param, τ=τ_newton, maxit=maxit_newton, verbose=verbose)
-        verbose && println("\tω ₙₗ = $(nlsol.ω)")
+        verbose && println("\tω ₙₗ = $(string(nlsol.ω)[17:end])")  # 17 is to skip header "Complex{Float64}"
     end
 
     check_conflict(lsol, nlsol)
@@ -96,7 +105,7 @@ function simulate!(lsol::LasingSol, lvar::LasingVar,
                    dvec::AbsVecReal,  # trajectory of pump strength parameter to follow
                    setD₀!::Function;  # setD₀!(param, d) sets pump strength param.D₀ corresponding to pump strength parameter d
                    outωaψ::NTuple{3,Bool}=(true,true,false),  # true to output ω, a, ψ
-                   doutvec::AbsVecReal=dvec,
+                   doutvec::AbsVecReal=dvec,  # output results when dvec[i] ∈ doutvec
                    τ_newton::Real=Base.rtoldefault(Float64),
                    τr_anderson::Real=1e-2,  # relative tolerance; consider using Base.rtoldefault(Float)
                    τa_anderson::Real=1e-4,  # absolute tolerance
@@ -112,17 +121,24 @@ function simulate!(lsol::LasingSol, lvar::LasingVar,
     ωout = outω ? MatComplex(M,nout) : MatComplex(M,0)
     aout = outa ? zeros(M,nout) : zeros(M,0)  # use zeros because some entries of a²out won't be overwritten
     ψout = outψ ? Array{CFloat,3}(M,nout,N) : Array{CFloat,3}(M,0,N)
+    nAA = zeros(Int, nout)  # nummber of Anderson acceleration steps
+    tAA = zeros(nout)  # time taken for Anderson acceleration
 
     println("\nStart simulation.")
-    cout = 1
+    cout = 1  # index of doutvec
     for d = dvec
         println("d = $d:")
         setD₀!(param, d)
+        n_anderson = 0
+        t_anderson = 0.0
         while true
             # Solve the lasing equations.
             while true
-                solve_leq!(lsol, lvar, CC, param, τr=τr_anderson, τa=τa_anderson, maxit=maxit_anderson, verbose=verbose)
-                verbose && println("\tω ₗ = $(lsol.ω), aₗ² = $(lsol.a²)")
+                tic()
+                n_anderson, ll = solve_leq!(lsol, lvar, CC, param, τr=τr_anderson, τa=τa_anderson, maxit=maxit_anderson, verbose=false)
+                t_anderson = toq()
+                # verbose && println("\tAnderson steps = $k, ‖leq‖ = $ll, ω ₗ = $(lsol.ω), aₗ² = $(lsol.a²)")
+                verbose && @printf("\tAnderson steps = %d (%f sec), ‖leq‖ = %.3e, ", n_anderson, t_anderson, ll); println("ω ₗ = $(lsol.ω), aₗ² = $(lsol.a²)")
                 if !shutdown!(lsol, nlsol)
                     break
                 end
@@ -130,8 +146,8 @@ function simulate!(lsol::LasingSol, lvar::LasingVar,
 
             # Solve the nonlasing equation.
             println("\tRecalculate nonlasing modes:")
-            solve_nleq!(nlsol, nlvar, lvar, CC, param, τ=τ_newton, maxit=maxit_newton, verbose=verbose)
-            verbose && println("\tω ₙₗ = $(nlsol.ω)")
+            solve_nleq!(nlsol, nlvar, lvar, CC, param, τ=τ_newton, maxit=maxit_newton, verbose=true)
+            verbose && println("\tω ₙₗ = $(string(nlsol.ω)[17:end])")  # 17 is to skip header "Complex{Float64}"
             if !turnon!(lsol, nlsol)
                 break
             end
@@ -141,7 +157,10 @@ function simulate!(lsol::LasingSol, lvar::LasingVar,
 
         # Output results for current d.
         if d == doutvec[cout]
-            # Output lasing modes.
+            nAA[cout] = n_anderson
+            tAA[cout] = t_anderson
+
+            # Output the lasing modes.
             m_act = lsol.m_act
             outω && (ωout[m_act,cout] .= lsol.ω[m_act])
             outa && (aout[m_act,cout] .= .√lsol.a²[m_act])
@@ -164,5 +183,5 @@ function simulate!(lsol::LasingSol, lvar::LasingVar,
         end
     end
 
-    return ωout, aout, ψout
+    return ωout, aout, ψout, nAA, tAA
 end
