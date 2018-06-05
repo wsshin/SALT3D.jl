@@ -1,6 +1,7 @@
 export solve_leq!, solve_nleq!, pumpup!, simulate!
 
-# solve_leq! is just a new name of anderson_salt!.
+# solve_leq! is just a new name of anderson_salt!.  norm_leq and update_lsol! are called
+# inside anderson_salt!.
 solve_leq!(lsol, lvar, CC, param; m=2, τr=1e-4, τa=1e-8, maxit=typemax(Int), verbose=true) =
     anderson_salt!(lsol, lvar, CC, param, m=m, τr=τr, τa=τa, maxit=maxit, verbose=verbose)
 
@@ -133,22 +134,61 @@ function simulate!(lsol::LasingSol, lvar::LasingVar,
         t_anderson = 0.0
         while true
             # Solve the lasing equations.
+            # Calculating the lasing modes first is doable because the lasing mode equations
+            # can be constructed for lasing modes without knowing nonlasing modes.
+            m_lastshutdown = 0
             while true
+                # Below, solve_leq! takes the indices of the modes that lased for the
+                # previous D₀ and updates the corresponding modes by solving the lasing
+                # mode equations for the new D₀.
                 tic()
                 n_anderson, ll = solve_leq!(lsol, lvar, CC, param, τr=τr_anderson, τa=τa_anderson, maxit=maxit_anderson, verbose=false)
                 t_anderson = toq()
                 # verbose && println("\tAnderson steps = $k, ‖leq‖ = $ll, ω ₗ = $(lsol.ω), aₗ² = $(lsol.a²)")
                 verbose && @printf("\tAnderson steps = %d (%f sec), ‖leq‖ = %.3e, ", n_anderson, t_anderson, ll); println("ω ₗ = $(lsol.ω), aₗ² = $(lsol.a²)")
-                if !shutdown!(lsol, nlsol)
+
+                # Below, shutdown! checks if some of the newly calculated lasing modes have
+                # a² ≤ 0.  If some do, it picks the one with the most negative a² and shuts
+                # it down.
+                m_shutdown = shutdown!(lsol, nlsol)
+
+                # If some mode was shut down above, continue the loop to perform solve_leq!
+                # again to recalculate the lasing modes only with the indices of the
+                # still-lasing modes.
+                #
+                # If no mode was shut down, break the loop.
+                if m_shutdown ≠ 0
+                    m_lastshutdown = m_shutdown
+                else  # m_shutdown == 0
                     break
                 end
             end
 
             # Solve the nonlasing equation.
+            # Below, solve_nleq! constructs the nonlasing mode equations for the new D₀ with
+            # the already-calculated lasing modes and updates the nonlasing modes by solving
+            # the equations.
             println("\tRecalculate nonlasing modes:")
             solve_nleq!(nlsol, nlvar, lvar, CC, param, τ=τ_newton, maxit=maxit_newton, verbose=true)
             verbose && println("\tω ₙₗ = $(string(nlsol.ω)[17:end])")  # 17 is to skip header "Complex{Float64}"
-            if !turnon!(lsol, nlsol)
+
+            # Below, turnon! checks if some of the newly calculated nonlasing modes have
+            # Im{ω} > 0.  If some do, it picks the one with the most positive ω and turns it
+            # on.
+            m_turnon = turnon!(lsol, nlsol)
+
+            # If some mode was turned on above, continue the loop to perform solve_leq!
+            # again to recalculate the lasing modes including the newly turned-on mode.
+            # Before continuing the loop, however, make sure if the turned-on mode is not
+            # the one that was just shut down, because it that case continuing the loop will
+            # shut down the same mode again and we will fall into the infinite loop.  (I
+            # guess we should be able to prove that such an infinite loop should not occur.
+            # Maybe a good research problem?)
+            #
+            # If no mode was turned on, break the loop.
+            if m_turnon ≠ 0
+                assert(m_turnon ≠ m_lastshutdown)
+            else  # m_turnon == 0
                 break
             end
         end

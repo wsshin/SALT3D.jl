@@ -57,38 +57,32 @@ end
 
 # Prepare LasingSol by turning on the nonlasing mode with the largest positive imaginary
 # part, if any.  See Sec. III.D of the SALT paper.
-# Return true if there is a mode to turn on.
+# Return the index of the mode to turn on; return 0 otherwise.
 function turnon!(lsol::LasingSol, nlsol::NonlasingSol)
-    m = indmax(imag, nlsol.ω, nlsol.m_act)
-    hasmode2turnon = m≠0
-    if hasmode2turnon
-        hasmode2turnon = imag(nlsol.ω[m]) > 0  # consider imag(ω) = 0 as nonlasing in order to keep lasing equations minimal
-        if hasmode2turnon
-            println("turn on: mode $m in ω ₙₗ = $(nlsol.ω)")
-            push!(lsol, m, nlsol)
-            pop!(nlsol, m)
-        end
-    end
+    m = indmax(imag, nlsol.ω, nlsol.m_act)  # m==0 if nlsol.m_act is empty
+    m≠0 && imag(nlsol.ω[m])>0 || return 0  # consider imag(ω) = 0 as nonlasing in order to keep lasing equations minimal
 
-    return hasmode2turnon
+    # Now m ≠ 0 and imag(nlsol.ω[m]) > 0.
+    println("Turn on mode $m where ω ₙₗ = $(string(nlsol.ω)[17:end])")  # 17 is to skip header "Complex{Float64}"
+    push!(lsol, m, nlsol)
+    pop!(nlsol, m)
+
+    return m
 end
 
 
 # Prepare NonlasingSol by shutting down the lasing mode with negative amplitude, if any.
-# Return true if there is any mode to shut down.
+# Return the index of the mode to shut down; return 0 otherwise.
 function shutdown!(lsol::LasingSol, nlsol::NonlasingSol)
-    m = indmin(identity, lsol.a², lsol.m_act)
-    hasmode2shutdown = m≠0
-    if hasmode2shutdown
-        hasmode2shutdown = lsol.a²[m] ≤ 0  # consider a² = 0 as nonlasing in order to keep lasing equations minimal
-        if hasmode2shutdown
-            println("shut down: mode $m in a²ₗ = $(lsol.a²)")
-            push!(nlsol, m, lsol)
-            pop!(lsol, m)
-        end
-    end
+    m = indmin(identity, lsol.a², lsol.m_act)  # m==0 if lsol.m_act is empty
+    m≠0 && lsol.a²[m]≤0 || return 0  # consider a² = 0 as nonlasing in order to keep lasing equations minimal
 
-    return hasmode2shutdown
+    # Now m ≠ 0 and lsol.a²[m] ≤ 0.
+    println("Shut down mode $m where a²ₗ = $(lsol.a²)")
+    push!(nlsol, m, lsol)
+    pop!(lsol, m)
+
+    return m
 end
 
 
