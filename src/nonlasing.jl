@@ -64,12 +64,13 @@ end
 mutable struct NonlasingModalVar{MC<:AbsMatComplex,VC<:AbsVecComplex}  # MC and VC can be PETSc matrix and vector
     A::MC
     ∂f∂ω::VC
+    inited::Bool
     function NonlasingModalVar{MC,VC}(A::AbsMatNumber,  # dense A is automatically converted to sparse matrix if MC is sparse type
                                       ∂f∂ω::AbsVecNumber) where {MC<:AbsMatComplex,VC<:AbsVecComplex}
         N = length(∂f∂ω)
         size(A) == (N,N) || throw(ArgumentError("Each entry of size(A) = $(size(A)) and length∂f∂ω) = $N must be the same."))
 
-        return new(A, ∂f∂ω)
+        return new(A, ∂f∂ω, false)
     end
 end
 NonlasingModalVar(A::MC, ∂f∂ω::VC) where {MC<:AbsMatComplex,VC<:AbsVecComplex} =
@@ -83,6 +84,7 @@ NonlasingModalVar(mtemp::AbsMat) =
     (N = size(mtemp)[1]; NonlasingModalVar(similar(mtemp,CFloat), VecComplex(N), VecComplex(N)))
 
 
+# Collection of nonlasing equation variables
 mutable struct NonlasingVar{MC<:AbsMatComplex,VC<:AbsVecComplex}
     mvar_vec::Vector{NonlasingModalVar{MC,VC}}
 end
@@ -107,9 +109,11 @@ function init_modal_var!(mvar::NonlasingModalVar,
     ε .= param.εc .+ γ .* D
     # info("maximum(D) = $(maximum(D)), maximum(|εc|) = $(maximum(abs(param.εc)))")
 
-    # Move A, rowA⁻¹ᵢₐ away.  These need to be used only
     create_A!(mvar.A, CC, ω, ε)
     mvar.∂f∂ω .= (2ω .* param.εc + (2ω*γ + ω^2*γ′) .* D) .* ψ  # derivative of nonlasing equation function w.r.t. ω
+
+    # Mark mvar as initialized.
+    mvar.inited = true
 
     return nothing
 end
@@ -117,6 +121,9 @@ end
 init_nlvar!(nlvar::NonlasingVar, m::Integer, nlsol::NonlasingSol, D::AbsVecFloat, CC::AbsMatNumber, param::SALTParam) =
     init_modal_var!(nlvar.mvar_vec[m], m, nlsol, D, CC, param)
 
+# Unlike norm_leq, this norm_nleq takes the mode index m, because nonlasing mode equations
+# are uncoupled between nonlasing modes.  This asymmetry between norm_leq and norm_lneq may
+# need to be fixed because it makes tracking code difficult.
 function norm_nleq(m::Integer, nlsol::NonlasingSol, mvar::NonlasingModalVar)
     A = mvar.A
     ψ = nlsol.ψ[m]
@@ -129,17 +136,24 @@ function norm_nleq(m::Integer,
                    D::AbsVecFloat,  # use param.D₀ (lsol.lvar.D) for calculation without (with) hole-burning term
                    CC::AbsMatNumber,
                    param::SALTParam)
-    # Call init_nlvar! here, which is necessary for using update_nlsol!, in order to force
-    # checking the norm before using update_nlsol!.
+    # update_nlsol! needs to call init_nlvar! beforehand.  By calling init_nlvar! here, we
+    # force checking the norm before using update_nlsol!.
     init_nlvar!(nlvar, m, nlsol, D, CC, param)
 
     return norm_nleq(m, nlsol, nlvar.mvar_vec[m])
 end
 
 
+# Unlike update_lsol!, this update_nlsol! takes the mode index m, because nonlasing mode
+# equations are uncoupled between nonlasing modes.  This asymmetry between update_lsol! and
+# update_nlsol! may need to be fixed because it makes tracking code difficult.
+update_nlsol!(nlsol::NonlasingSol, m::Integer, nlvar::NonlasingVar) = update_nlsol!(nlsol, m, nlvar.mvar_vec[m])
+
 function update_nlsol!(nlsol::NonlasingSol,
                        m::Integer,  # index of nonlasing mode of interest
                        mvar::NonlasingModalVar)  # must be already initialized
+    mvar.inited || throw(ArgumentError("mvar is uninitialized: call norm_nleq(...) first."))
+
     # Retrieve necessary variables for constructing the constraint.
     ψ = nlsol.ψ[m]
     iₐ = nlsol.iₐ[m]
@@ -156,6 +170,8 @@ function update_nlsol!(nlsol::NonlasingSol,
     assert(ψ[iₐ] ≈ ψᵢₐold)
     ψ ./= ψ[iₐ]
 
+    # Mark mvar uninitialized for the update solution.
+    mvar.inited = false
+
     return nothing
 end
-update_nlsol!(nlsol::NonlasingSol, m::Integer, nlvar::NonlasingVar) = update_nlsol!(nlsol, m, nlvar.mvar_vec[m])

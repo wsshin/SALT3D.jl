@@ -206,9 +206,10 @@ mutable struct LasingVar{MC<:AbsMatComplex,VC<:AbsVecComplex,VF<:AbsVecFloat}
     mvar_vec::Vector{LasingModalVar{MC,VC}}
     rvar::LasingReducedVar{VF}
     cst::LasingConstraint
+    inited::Bool
 end
 LasingVar(mtemp::AbsMat, vtemp::AbsVec, M::Integer) =
-    LasingVar(∆LasingSol(vtemp, M), [LasingModalVar(mtemp, vtemp) for m = 1:M], LasingReducedVar(vtemp, M), LasingConstraint(M))
+    LasingVar(∆LasingSol(vtemp, M), [LasingModalVar(mtemp, vtemp) for m = 1:M], LasingReducedVar(vtemp, M), LasingConstraint(M), false)
 LasingVar(mtemp::AbsMat, M::Integer) = (N = size(mtemp)[1]; LasingVar(mtemp, VecFloat(N), M))
 
 
@@ -277,6 +278,8 @@ function init_lvar!(lvar::LasingVar, lsol::LasingSol, CC::AbsMatNumber, param::S
     for m = lsol.m_act
         init_modal_var!(mvar_vec[m], m, lsol, rvar, CC, param)
     end
+
+    lvar.inited = true
 
     return nothing
 end
@@ -413,6 +416,16 @@ function apply_∆solₘ!(lsol::LasingSol,
 end
 
 
+# lvar must be already initialized by init_lvar! before starting the fixed-point iteration.
+function update_lsol!(lsol::LasingSol, lvar::LasingVar, CC::AbsMatNumber, param::SALTParam)
+    lvar.inited || throw(ArgumentError("lvar is uninitialized: call norm_leq(...) first."))
+    update_lsol!(lsol, lvar.∆lsol, lvar.mvar_vec, lvar.rvar, lvar.cst, param)
+    lvar.inited = false
+
+    return nothing
+end
+
+
 # Fixed-point equation for lsol.  Calculate ∆ω and ∆a, and then ∆ψ, and move lsol by them.
 #
 # This function is expensive to call, because it involves 2Mₗ linear solves, where Mₗ is the
@@ -456,11 +469,6 @@ function update_lsol!(lsol::LasingSol,
 
     return nothing
 end
-
-
-# lvar must be already initialized by init_lvar! before starting the fixed-point iteration.
-update_lsol!(lsol::LasingSol, lvar::LasingVar, CC::AbsMatNumber, param::SALTParam) =
-    update_lsol!(lsol, lvar.∆lsol, lvar.mvar_vec, lvar.rvar, lvar.cst, param)
 
 
 # To use andersonaccel!, implement anderson_SALT! that accepts SALTSol as an initial guess
