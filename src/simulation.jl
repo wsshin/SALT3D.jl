@@ -1,7 +1,7 @@
 export solve_leq!, solve_nleq!, pumpup!, simulate!
 
 # solve_leq! is just a new name of anderson_salt!.
-solve_leq!(lsol, lvar, CC, param; m=2, τr=1e-2, τa=1e-4, maxit=typemax(Int), verbose=true) =
+solve_leq!(lsol, lvar, CC, param; m=2, τr=1e-4, τa=1e-8, maxit=typemax(Int), verbose=true) =
     anderson_salt!(lsol, lvar, CC, param, m=m, τr=τr, τa=τa, maxit=maxit, verbose=verbose)
 
 # Solve the nonlasing equations without the spatial hole-burning term.
@@ -68,8 +68,8 @@ function pumpup!(lsol::LasingSol, lvar::LasingVar,
                  dvec::AbsVecReal,  # trajectory of pump strength parameter to follow
                  setD₀!::Function;  # setD₀!(param, d) sets pump strength param.D₀ corresponding to pump strength parameter d
                  τ_newton::Real=Base.rtoldefault(Float64),
-                 τr_anderson::Real=1e-2,  # relative tolerance; consider using Base.rtoldefault(Float)
-                 τa_anderson::Real=1e-4,  # absolute tolerance
+                 τr_anderson::Real=1e-4,  # relative tolerance; consider using Base.rtoldefault(Float)
+                 τa_anderson::Real=1e-8,  # absolute tolerance
                  maxit_newton::Integer=20,  # maximum number of Newton iteration steps
                  maxit_anderson::Integer=typemax(Int),
                  verbose::Bool=true)
@@ -107,8 +107,8 @@ function simulate!(lsol::LasingSol, lvar::LasingVar,
                    outωaψ::NTuple{3,Bool}=(true,true,false),  # true to output ω, a, ψ
                    doutvec::AbsVecReal=dvec,  # output results when dvec[i] ∈ doutvec
                    τ_newton::Real=Base.rtoldefault(Float64),
-                   τr_anderson::Real=1e-2,  # relative tolerance; consider using Base.rtoldefault(Float)
-                   τa_anderson::Real=1e-4,  # absolute tolerance
+                   τr_anderson::Real=1e-4,  # relative tolerance; consider using Base.rtoldefault(Float)
+                   τa_anderson::Real=1e-8,  # absolute tolerance
                    maxit_newton::Integer=20,  # maximum number of Newton iteration steps
                    maxit_anderson::Integer=typemax(Int),
                    verbose::Bool=true)

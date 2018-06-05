@@ -12,8 +12,8 @@ function anderson_salt!(lsol::LasingSol,
                         CC::AbsMatNumber,
                         param::SALTParam;
                         m::Integer=2, # number of additional x's kept in algorithm; m = 0 means unaccelerated iteration
-                        τr::Real=1e-2,  # relative tolerance; consider using Base.rtoldefault(Float)
-                        τa::Real=1e-4,  # absolute tolerance
+                        τr::Real=1e-4,  # relative tolerance; consider using Base.rtoldefault(Float)
+                        τa::Real=1e-8,  # absolute tolerance
                         maxit::Int=typemax(Int),  # number of maximum number of iteration steps
                         verbose::Bool=true)
     k = 0
