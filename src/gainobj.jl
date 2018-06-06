@@ -23,7 +23,13 @@ end
 GainObject(shape::S, D₀fun::F) where {K,S<:Shape{K},F<:Function} = GainObject{K,S,F}(shape, D₀fun)
 GainObject(shape::Shape) = GainObject(shape, d::Real->d)
 
-function assign_gainobj!(D₀::AbsVecReal, gobj_vec::AbsVec{<:GainObject{3}}, d::Real, N::SVector{3,Int}, l::MaxwellFDM.Tuple23{AbsVecReal})
+
+# Assign the gain specified by gain objects to an array.
+function assign_gainobj!(D₀::AbsVecReal,  # output vector to write on (reshaped into array of size 3×N, such that D₀[k,x,y,z] is D₀ multiplied to Eₖ[x,y,z])
+                         gobj_vec::AbsVec{<:GainObject{3}},  # vector of gain objects; later objects overwrite earlier objects
+                         d::Real,  # pump parameter at which D₀ is evaluated
+                         N::SVector{3,Int},  # size of output 3D array
+                         l::MaxwellFDM.Tuple23{AbsVecReal})  # l[PRIM][k], l[DUAL][k]: primal, dual vertex locations in k-direction
     D₀array = reshape(D₀, 3, N.data...)
     gt = PRIM
     gt_cmp₀ = SVector(gt, gt, gt)
