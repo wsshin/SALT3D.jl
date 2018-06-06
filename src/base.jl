@@ -1,16 +1,7 @@
-function Base.indmax(f::Function, v::AbsVec)
-    ind = 0  # return 0 if v is empty
-    val = -Inf
-    for n = 1:length(v)
-        if f(v[n]) ≥ val  # ≥ rather than > to prevent returning 0 when v has -Inf
-            val = f(v[n])
-            ind = n
-        end
-    end
+# Return the index of the maximum entry of a given vector.
+Base.indmax(f::Function, v::AbsVec) = indmax(f, v, 1:length(v))
 
-    return ind
-end
-
+# Return the index of the maximum entry of a given vector, among specified indices.
 function Base.indmax(f::Function, v::AbsVec, indv::AbsVecInteger)
     ind = 0  # return 0 if v is empty
     val = -Inf
@@ -24,19 +15,11 @@ function Base.indmax(f::Function, v::AbsVec, indv::AbsVecInteger)
     return ind
 end
 
-function Base.indmin(f::Function, v::AbsVec)
-    ind = 0  # return 0 if v is empty
-    val = Inf
-    for n = 1:length(v)
-        if f(v[n]) ≤ val  # ≤ rather than < to prevent returning 0 when v has -Inf
-            val = f(v[n])
-            ind = n
-        end
-    end
 
-    return ind
-end
+# Return the index of the minimum entry of a given vector.
+Base.indmin(f::Function, v::AbsVec) = indmin(f, v, 1:length(v))
 
+# Return the index of the minimum entry of a given vector, among specified indices.
 function Base.indmin(f::Function, v::AbsVec, indv::AbsVecInteger)
     ind = 0  # return 0 if v is empty
     val = Inf
