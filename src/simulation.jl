@@ -176,6 +176,7 @@ function solve_salt!(lsol::LasingSol, lvar::LasingVar,
             m_turnon ≠ m_lastshutdown || throw(ErrorException("Infinite loop is predicted: "
                 * "mode shut down is turned on again.  Probably too close to threshold "
                 * "while SALT is solved not sufficiently accurately."))
+            info("aₗ² = $(lsol.a²), ωₙₗ = $(nlsol.ω)")
         else  # m_turnon == 0
             break
         end
