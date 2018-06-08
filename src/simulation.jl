@@ -1,5 +1,7 @@
 export pump!, simulate!, find_threshold!
 
+const MAXIT_INFLOOP = 10
+
 # solve_leq! is just a new name of anderson_salt!.  norm_leq and update_lsol! are called
 # inside anderson_salt!.
 solve_leq!(lsol, lvar, CC, param; m=2, τr=1e-4, τa=1e-8, maxit=typemax(Int), verbose=true) =
@@ -106,6 +108,7 @@ function solve_salt!(lsol::LasingSol, lvar::LasingVar,
     setD₀!(param, d)
     n_anderson = 0
     t_anderson = 0.0
+    n_infloop = 0
     while true
         # Solve the lasing equation.
         # Calculating the lasing modes first is doable because the lasing equation can
@@ -173,11 +176,25 @@ function solve_salt!(lsol::LasingSol, lvar::LasingVar,
         #
         # If no mode was turned on, break the loop.
         if m_turnon ≠ 0
-            m_turnon ≠ m_lastshutdown || throw(ErrorException("Infinite loop is predicted: "
-                * "mode shut down is turned on again.  Probably too close to threshold "
-                * "while SALT is solved not sufficiently accurately."))
-            info("aₗ² = $(lsol.a²), ωₙₗ = $(nlsol.ω)")
+            if m_turnon ≠ m_lastshutdown
+                n_infloop += 1
+                if n_infloop ≤ MAXIT_INFLOOP
+                    warn("Infinite loop might occur (loop count = $n_infloop): shut-down mode is turned on again.\n"
+                        * "Probably solving SALT too close to lasing threshold.  Then mode can be seen lasing and nonlasing simultaneously by slight inaccuracy.  "
+                        * "Could be automatically resolved in next few turns because lasing equation will be solved again with already good solution as initial guess.")
+                    # I initially thought that the Anderson acceleration for solving the
+                    # lasing equation in the next turn will stop immediately because an
+                    # already good solution is provided as an initial guess.  This is not
+                    # true, because it evaluates the residual for the current guess and
+                    # improve the solution from there until the relative tolerance is
+                    # satisfied.  Therefore, even though a shut-down mode is turned on again,
+                    # the mode still improves in the next turn and does not remain the same.
+                else  # n_infloop > MAXIT_INFLOOP
+                    throw(ExceptionError("Infinite loop detected (loop count = $n_infloop)."))
+                end
+            end
         else  # m_turnon == 0
+            n_infloop = 0
             break
         end
     end
