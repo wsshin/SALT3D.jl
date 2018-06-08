@@ -1,4 +1,4 @@
-export pump!, simulate!
+export pump!, simulate!, find_threshold!
 
 # solve_leq! is just a new name of anderson_salt!.  norm_leq and update_lsol! are called
 # inside anderson_salt!.
@@ -288,4 +288,75 @@ function simulate!(lsol::LasingSol, lvar::LasingVar,
     end
 
     return ωout, aout, ψout, nAA, tAA
+end
+
+
+# Find the threshold of the mode with a given mode index.
+# Assume drng = (dl, dr) are both quite close to the threshold, and therefore the
+# initial guess solution lsol and nlsol are good guesses for both d = dl and dr.
+#
+# Consider implementing linear interpolation as well.
+function find_threshold!(lsol::LasingSol, lvar::LasingVar,
+                         nlsol::NonlasingSol, nlvar::NonlasingVar,
+                         CC::AbsMatNumber,
+                         param::SALTParam,
+                         m::Integer,  # index of mode whose threshold is to be calculated
+                         drng::Tuple{Real,Real},  # threshold is between drng[1] and drng[2]
+                         setD₀!::Function;  # setD₀!(param, d) sets pump strength param.D₀ corresponding to pump strength parameter d
+                         τ_newton::Real=Base.rtoldefault(Float64),
+                         τr_anderson::Real=1e-4,  # relative tolerance; consider using Base.rtoldefault(Float)
+                         τa_anderson::Real=1e-8,  # absolute tolerance
+                         τ_bisect::Real=1e-9,  # relative tolerance of bisection method
+                         maxit_newton::Integer=20,  # maximum number of Newton iteration steps
+                         maxit_anderson::Integer=typemax(Int),  # maximum number of Anderson iteration steps
+                         maxit_bisect::Integer=50,  # maximum number of bisection steps
+                         verbose::Bool=true)
+    M = length(lsol)
+    N = length(lsol.ψ[1])
+
+    # Below, dl ≤ dr does not have to hold.  dr is just d examined later than dl in the
+    # pump parameter scan outside this function.
+    dl, dr = drng
+    println("\nStart bisection method to find threshold of mode $m between d = $dl and $dr.")
+
+    # Solve at d = dr first, because lsol is likely to contain the guess for d = dr, which
+    d = dr
+    solve_salt!(lsol, lvar, nlsol, nlvar, CC, param, d, setD₀!,
+                τ_newton=τ_newton, τr_anderson=τr_anderson, τa_anderson=τa_anderson,
+                maxit_newton=maxit_newton, maxit_anderson=maxit_anderson, verbose=verbose)
+    lase_r = lsol.act[m]  # true if lasing at d = dr
+
+    d = dl
+    solve_salt!(lsol, lvar, nlsol, nlvar, CC, param, d, setD₀!,
+                τ_newton=τ_newton, τr_anderson=τr_anderson, τa_anderson=τa_anderson,
+                maxit_newton=maxit_newton, maxit_anderson=maxit_anderson, verbose=verbose)
+    lase_l = lsol.act[m]  # true if lasing at d = dl
+
+    n_bisect = 0
+    println("After bisection step $n_bisect, lasing status of mode $m: $lase_l at d = $dl and $lase_r at d = $dr.")
+
+    # In order to apply the search algorithm, the mode m must lase at only one of dl and dr.
+    xor(lase_l, lase_r) || throw(ArgumentError("Must lase at one and only one of d = ($dl, $dr)."))
+
+    while (n_bisect+=1) ≤ maxit_bisect && abs(dr-dl) > τ_bisect * abs(dr)
+        dc = 0.5(dl+dr)
+        d = dc
+        solve_salt!(lsol, lvar, nlsol, nlvar, CC, param, d, setD₀!,
+                    τ_newton=τ_newton, τr_anderson=τr_anderson, τa_anderson=τa_anderson,
+                    maxit_newton=maxit_newton, maxit_anderson=maxit_anderson, verbose=true)
+        lase_c = lsol.act[m]  # true if lasing at d = dc
+
+        if lase_c == lase_l
+            dl = dc
+            lase_l = lase_c
+        else
+            dr = dc
+            lase_r = lase_c
+        end
+        assert(xor(lase_l, lase_r))
+
+        println("After bisection step $n_bisect, lasing status of mode $m: $lase_l at d = $dl and $lase_r at d = $dr.")
+    end
+
+    return d
 end
