@@ -7,6 +7,7 @@ function Base.push!(lsol::LasingSol, m::Integer, nlsol::NonlasingSol)
     lsol.a²[m] = 0
     iₐ = lsol.iₐ[m] = nlsol.iₐ[m]
     ψ = lsol.ψ[m] .= nlsol.ψ[m]
+    # info("ψ[iₐ] = $(ψ[iₐ])")
     assert(ψ[iₐ] == 1)  # make sure ψₘ is already normalized
 
     M = length(lsol)
