@@ -16,15 +16,17 @@ function anderson_salt!(lsol::LasingSol,
                         τa::Real=1e-8,  # absolute tolerance
                         maxit::Int=typemax(Int),  # number of maximum number of iteration steps
                         verbose::Bool=true)
-    k = 0
-    lleq₀ = norm_leq(lsol, lvar, CC, param)
-    verbose && println("\tAnderson acceleration:")
-    verbose && println("\tInitial residual norm: ‖leq₀‖ = $lleq₀")
-    lleq₀ ≤ τa && return k, lleq₀  # lsol.m_act = [] falls to this as well
-
     m ≥ 0 || throw(ArgumentError("m = $m must be ≥ 0."))
     τr ≥ 0 || throw(ArgumentError("τr = $τr must be ≥ 0."))
     τa ≥ 0 || throw(ArgumentError("τa = $τa must be ≥ 0."))
+    maxit ≥ 0 || throw(ArgumentError("maxit = $maxit must be ≥ 0."))
+
+    k = 0
+    lleq₀ = norm_leq(lsol, lvar, CC, param)
+    # verbose && println("\tAnderson acceleration:")
+    verbose && println("\tInitial residual norm: ‖leq₀‖ = $lleq₀")
+    lleq₀ ≤ τa && return k, lleq₀  # lsol.m_act = [] falls to this as well
+    τ = max(τr*lleq₀, τa)
 
     x = lsol2rvec(lsol)
     n = length(x)
@@ -41,10 +43,10 @@ function anderson_salt!(lsol::LasingSol,
     # Note we need at least two x's to perform the m ≠ 0 Anderson acceleration.
 
     if m == 0 # simple fixed-point iteration (no memory)
-        for k = 1:maxit-1
+        for k = 1:maxit
             lleq = norm_leq(lsol, lvar, CC, param)
             verbose && println("k = $k: ‖leq‖ / ‖leq₀‖ = $(lleq/lleq₀)")
-            lleq ≤ max(τr*lleq₀, τa) && break
+            lleq ≤ τ && break
             update_lsol!(lsol, lvar, CC, param)
         end
     else  # m ≠ 0
@@ -80,10 +82,10 @@ function anderson_salt!(lsol::LasingSol,
         # - with which ∆fₖ₋₁ = f(xₖ) - f(xₖ₋₁) is calculated.
         #
         # Then we know ∆xₖ₋₁ and ∆fₖ₋₁, which are needed for the Anderson acceleration.
-        for k = 1:maxit-1
+        for k = 1:maxit
             lleq = norm_leq(lsol, lvar, CC, param)
             verbose && println("\tk = $k: ‖leq‖ / ‖leq₀‖ = $(lleq/lleq₀)")
-            lleq ≤ max(τr*lleq₀, τa) && break
+            lleq ≤ τ && break
 
             # Evaluate g(xₖ).
             xold .= x  # xold = xₖ
