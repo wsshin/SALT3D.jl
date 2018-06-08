@@ -64,7 +64,7 @@ function turnon!(lsol::LasingSol, nlsol::NonlasingSol)
     m≠0 && imag(nlsol.ω[m])>0 || return 0  # consider imag(ω) = 0 as nonlasing in order to keep lasing equations minimal
 
     # Now m ≠ 0 and imag(nlsol.ω[m]) > 0.
-    println("Turn on mode $m where ω ₙₗ = $(string(nlsol.ω)[17:end])")  # 17 is to skip header "Complex{Float64}"
+    println("Turn on mode $m where ωₙₗ = $(string(nlsol.ω)[17:end])")  # 17 is to skip header "Complex{Float64}"
     push!(lsol, m, nlsol)
     pop!(nlsol, m)
 
@@ -79,7 +79,7 @@ function shutdown!(lsol::LasingSol, nlsol::NonlasingSol)
     m≠0 && lsol.a²[m]≤0 || return 0  # consider a² = 0 as nonlasing in order to keep lasing equations minimal
 
     # Now m ≠ 0 and lsol.a²[m] ≤ 0.
-    println("Shut down mode $m where a²ₗ = $(lsol.a²)")
+    println("Shut down mode $m where aₗ² = $(lsol.a²)")
     push!(nlsol, m, lsol)
     pop!(lsol, m)
 

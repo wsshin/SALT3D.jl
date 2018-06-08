@@ -149,7 +149,7 @@ function solve_salt!(lsol::LasingSol, lvar::LasingVar,
         # equation.
         println("\tRecalculate nonlasing modes:")
         solve_nleq!(nlsol, nlvar, lvar, CC, param, τ=τ_newton, maxit=maxit_newton, verbose=true)
-        verbose && println("\tω ₙₗ = $(string(nlsol.ω)[17:end])")  # 17 is to skip header "Complex{Float64}"
+        verbose && println("\tωₙₗ = $(string(nlsol.ω)[17:end])")  # 17 is to skip header "Complex{Float64}"
 
         # Below, turnon! checks if some of the newly calculated nonlasing modes have
         # Im{ω} > 0.  If some do, it picks the one with the most positive ω and turns it
@@ -207,7 +207,7 @@ function pump!(lsol::LasingSol, lvar::LasingVar,
     for d = dvec[1:end-1]  # d = dvec[end] will be handled in solve_salt! below
         setD₀!(param, d)
         solve_nleq!(nlsol, nlvar, CC, param, τ=τ_newton, maxit=maxit_newton, verbose=verbose)
-        verbose && println("d = $d, ω ₙₗ = $(string(nlsol.ω)[17:end])")  # 17 is to skip header "Complex{Float64}"
+        verbose && println("d = $d, ωₙₗ = $(string(nlsol.ω)[17:end])")  # 17 is to skip header "Complex{Float64}"
     end
 
     println("\nFind lasing modes at pumped point.")
