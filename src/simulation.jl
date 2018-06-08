@@ -12,24 +12,33 @@ function solve_nleq!(nlsol::NonlasingSol,
                      nlvar::NonlasingVar,
                      CC::AbsMatNumber,
                      param::SALTParam;
-                     τ::Real=Base.rtoldefault(Float64),
+                     τr::Real=1e-4,  # relative tolerance
+                     τa::Real=1e-8,  # absolute tolerance
                      maxit::Integer=20,  # maximum number of Newton iteration steps
                      verbose::Bool=true)
+    τr ≥ 0 || throw(ArgumentError("τr = $τr must be ≥ 0."))
+    τa ≥ 0 || throw(ArgumentError("τa = $τa must be ≥ 0."))
+    maxit ≥ 0 || throw(ArgumentError("maxit = $maxit must be ≥ 0."))
+
     mvec = 1:length(nlsol)  # 1:M
     D = param.D₀  # use param.D₀ because hole-burning is assumed zero
     for m = mvec
         # Newton method for nonlasing modes
-        k = 0
-        lnl = 0.0
         tic()
-        for k = 1:maxit
-            lnl = norm_nleq(m, nlsol, nlvar, D, CC, param)
-            lnl ≤ τ && break
-            update_nlsol!(nlsol, m, nlvar)
+        k = 0
+        lnleq₀ = norm_nleq(m, nlsol, nlvar, D, CC, param)
+        # verbose && println("\tInitial residual norm: ‖nleq₀‖ = $lnleq₀")
+        if lnleq₀ > τa
+            τ = max(τr*lnleq₀, τa)
+            for k = 1:maxit
+                lnleq = norm_nleq(m, nlsol, nlvar, D, CC, param)
+                lnleq ≤ τ && break
+                update_nlsol!(nlsol, m, nlvar)
+            end
         end
         t_newton = toq()
-        # verbose && println("\tmode $m: Newton steps = $k, ‖nleq‖ = $lnl")
-        verbose && @printf("\tmode %d: Newton steps = %d (%f sec), ‖nleq‖ = %.3e\n", m, k, t_newton, lnl)
+        # verbose && println("\tmode $m: Newton steps = $k, ‖nleq‖ = $lnleq")
+        verbose && @printf("\tmode %d: Newton steps = %d (%f sec), ‖nleq‖ = %.3e\n", m, k, t_newton, lnleq)
     end
 end
 
@@ -37,29 +46,36 @@ end
 # Solve the nonlasing equation with the spatial hole-burning term.
 function solve_nleq!(nlsol::NonlasingSol,
                      nlvar::NonlasingVar,
-                     lvar::LasingVar,  # used only to pass pre-calculated D
+                     lvar::LasingVar,  # used only to deliver pre-calculated D; directly passing D might be better?
                      CC::AbsMatNumber,
                      param::SALTParam;
-                     τ::Real=Base.rtoldefault(Float64),
+                     τr::Real=1e-4,  # relative tolerance
+                     τa::Real=1e-8,  # absolute tolerance
                      maxit::Integer=20,  # maximum number of Newton iteration steps
                      verbose::Bool=true)
-    # Below, lvar must be initialized already by init_lvar!, typically by norm_leq
-    # within anderson_salt!
+    # Below, lvar must be initialized already by init_lvar!, typically by norm_leq within
+    # anderson_salt!
+    lvar.inited || throw(ArgumentError("lvar is uninitialized: call norm_leq(...) first.  "
+                                    * "This is typically done by calling anderson_salt!."))
+
     mvec = nlsol.m_act
     D = lvar.rvar.D
     for m = mvec
         # Newton method for nonlasing modes
-        k = 0
-        lnl = 0.0
         tic()
-        for k = 1:maxit
-            lnl = norm_nleq(m, nlsol, nlvar, D, CC, param)
-            lnl ≤ τ && break
-            update_nlsol!(nlsol, m, nlvar)
+        k = 0
+        lnleq₀ = norm_nleq(m, nlsol, nlvar, D, CC, param)
+        if lnleq₀ > τa
+            τ = max(τr*lnleq₀, τa)
+            for k = 1:maxit
+                lnleq = norm_nleq(m, nlsol, nlvar, D, CC, param)
+                lnleq ≤ τ && break
+                update_nlsol!(nlsol, m, nlvar)
+            end
         end
         t_newton = toq()
-        # verbose && println("\tmode $m: Newton steps = $k, ‖nleq‖ = $lnl")
-        verbose && @printf("\tmode %d: Newton steps = %d (%f sec), ‖nleq‖ = %.3e\n", m, k, t_newton, lnl)
+        # verbose && println("\tmode $m: Newton steps = $k, ‖nleq‖ = $lnleq")
+        verbose && @printf("\tmode %d: Newton steps = %d (%f sec), ‖nleq‖ = %.3e\n", m, k, t_newton, lnleq)
     end
 end
 
@@ -119,6 +135,7 @@ function solve_salt!(lsol::LasingSol, lvar::LasingVar,
             # previous D₀ and updates the corresponding modes by solving the lasing
             # equation for the new D₀.
             tic()
+            println("\tCalculate lasing modes:")
             n_anderson, ll = solve_leq!(lsol, lvar, CC, param, τr=τr_anderson, τa=τa_anderson, maxit=maxit_anderson, verbose=verbose)
             t_anderson = toq()
             # verbose && println("\tAnderson steps = $k, ‖leq‖ = $ll, ω ₗ = $(lsol.ω), aₗ² = $(lsol.a²)")
@@ -150,7 +167,7 @@ function solve_salt!(lsol::LasingSol, lvar::LasingVar,
         # Below, solve_nleq! constructs the nonlasing equation for the new D₀ with the
         # already-calculated lasing modes and updates the nonlasing modes by solving the
         # equation.
-        println("\tRecalculate nonlasing modes:")
+        println("\tCalculate nonlasing modes:")
         solve_nleq!(nlsol, nlvar, lvar, CC, param, τ=τ_newton, maxit=maxit_newton, verbose=true)
         verbose && println("\tωₙₗ = $(string(nlsol.ω)[17:end])")  # 17 is to skip header "Complex{Float64}"
 
