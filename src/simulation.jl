@@ -1,10 +1,23 @@
 export pump!, simulate!, find_threshold!
 
-const MAXIT_INFLOOP = 10
+const TR_NEWTON = Base.rtoldefault(Float)  # relative tolerance for Newton method to solve nonlasing equation
+const TA_NEWTON = eps(Float)  # absolute tolerance for Newton method to solve nonlasing equation
+const MAXIT_NEWTON = 20  # maximum number of Newton iteration steps
+
+const TR_ANDERSON = 1e-4  # relative tolerance for Anderson acceleration to solve lasing equation; consider using Base.rtoldefault(Float)
+const TA_ANDERSON = 1e-6  # absolute tolerance for Anderson acceleration to solve lasing equation
+const MAXIT_ANDERSON = typemax(Int)  # maximum number of Anderson iteration steps
+const M_ANDERSON = 2  # number of basis vectors to use in Anderson acceleration
+
+const MAXIT_INFLOOP = 0  # loop counter until infinite loop is determined (set to 0 because now we can determine it quite quickly)
+
+const TR_BISECT = Base.rtoldefault(Float)  # relative tolerance of bisection method
+const TA_BISECT = eps(Float)  # relative tolerance of bisection method
+const MAXIT_BISECT = 50  # maximum number of bisection steps
 
 # solve_leq! is just a new name of anderson_salt!.  norm_leq and update_lsol! are called
 # inside anderson_salt!.
-solve_leq!(lsol, lvar, CC, param; m=2, τr=1e-4, τa=1e-8, maxit=typemax(Int), verbose=true) =
+solve_leq!(lsol, lvar, CC, param; m=M_ANDERSON, τr=TR_ANDERSON, τa=TA_ANDERSON, maxit=MAXIT_ANDERSON, verbose=true) =
     anderson_salt!(lsol, lvar, CC, param, m=m, τr=τr, τa=τa, maxit=maxit, verbose=verbose)
 
 # Solve the nonlasing equation without the spatial hole-burning term.
@@ -19,9 +32,9 @@ function solve_nleq!(nlsol::NonlasingSol,
                      CC::AbsMatNumber,
                      param::SALTParam,
                      D::AbsVecFloat=param.D₀;
-                     τr::Real=1e-4,  # relative tolerance
-                     τa::Real=1e-8,  # absolute tolerance
-                     maxit::Integer=20,  # maximum number of Newton iteration steps
+                     τr::Real=TR_NEWTON,  # relative tolerance
+                     τa::Real=TA_NEWTON,  # absolute tolerance
+                     maxit::Integer=MAXIT_NEWTON,  # maximum number of Newton iteration steps
                      verbose::Bool=true)
     τr ≥ 0 || throw(ArgumentError("τr = $τr must be ≥ 0."))
     τa ≥ 0 || throw(ArgumentError("τa = $τa must be ≥ 0."))
@@ -85,12 +98,13 @@ function solve_salt!(lsol::LasingSol, lvar::LasingVar,
                      param::SALTParam,
                      d::Real,  # pump strength parameter to calculate the modes for
                      setD₀!::Function;  # setD₀!(param, d) sets pump strength param.D₀ corresponding to pump strength parameter d
-                     τr_newton::Real=Base.rtoldefault(Float),  # relative tolerance for Newton method to solve nonlasing equation
-                     τa_newton::Real=eps(Float),  # absolute tolerance for Newton method to solve nonlasing equation
-                     maxit_newton::Integer=20,  # maximum number of Newton iteration steps
-                     τr_anderson::Real=1e-4,  # relative tolerance for Anderson acceleration to solve lasing equation; consider using Base.rtoldefault(Float)
-                     τa_anderson::Real=1e-8,  # absolute tolerance for Anderson acceleration to solve lasing equation
-                     maxit_anderson::Integer=typemax(Int),  # maximum number of Anderson iteration steps
+                     τr_newton::Real=TR_NEWTON,  # relative tolerance for Newton method to solve nonlasing equation
+                     τa_newton::Real=TA_NEWTON,  # absolute tolerance for Newton method to solve nonlasing equation
+                     maxit_newton::Integer=MAXIT_NEWTON,  # maximum number of Newton iteration steps
+                     m_anderson::Integer=M_ANDERSON,  # number of basis vectors to use in Anderson acceleration
+                     τr_anderson::Real=TR_ANDERSON,  # relative tolerance for Anderson acceleration to solve lasing equation; consider using Base.rtoldefault(Float)
+                     τa_anderson::Real=TA_ANDERSON,  # absolute tolerance for Anderson acceleration to solve lasing equation
+                     maxit_anderson::Integer=MAXIT_ANDERSON,  # maximum number of Anderson iteration steps
                      verbose::Bool=true)
     println("d = $d:")
     setD₀!(param, d)
@@ -108,7 +122,7 @@ function solve_salt!(lsol::LasingSol, lvar::LasingVar,
             # equation for the new D₀.
             tic()
             println("\tCalculate lasing modes:")
-            n_anderson, ll = solve_leq!(lsol, lvar, CC, param, τr=τr_anderson, τa=τa_anderson, maxit=maxit_anderson, verbose=verbose)
+            n_anderson, ll = solve_leq!(lsol, lvar, CC, param, τr=τr_anderson, τa=τa_anderson, maxit=maxit_anderson, m=m_anderson, verbose=verbose)
             t_anderson = toq()
             # verbose && println("\tAnderson steps = $k, ‖leq‖ = $ll, ωₗ = $(lsol.ω), aₗ² = $(lsol.a²)")
             verbose && @printf("\tAnderson steps = %d (%f sec), ‖leq‖ = %.3e, ", n_anderson, t_anderson, ll); println("ωₗ = $(lsol.ω), aₗ² = $(lsol.a²)")
@@ -205,12 +219,13 @@ function pump!(lsol::LasingSol, lvar::LasingVar,
                param::SALTParam,
                dvec::AbsVecReal,  # trajectory of pump strength parameter to follow
                setD₀!::Function;  # setD₀!(param, d) sets pump strength param.D₀ corresponding to pump strength parameter d
-               τr_newton::Real=Base.rtoldefault(Float),  # relative tolerance for Newton method to solve nonlasing equation
-               τa_newton::Real=eps(Float),  # absolute tolerance for Newton method to solve nonlasing equation
-               maxit_newton::Integer=20,  # maximum number of Newton iteration steps
-               τr_anderson::Real=1e-4,  # relative tolerance; consider using Base.rtoldefault(Float)
-               τa_anderson::Real=1e-8,  # absolute tolerance
-               maxit_anderson::Integer=typemax(Int),  # maximum number of Anderson iteration steps
+               τr_newton::Real=TR_NEWTON,  # relative tolerance for Newton method to solve nonlasing equation
+               τa_newton::Real=TA_NEWTON,  # absolute tolerance for Newton method to solve nonlasing equation
+               maxit_newton::Integer=MAXIT_NEWTON,  # maximum number of Newton iteration steps
+               m_anderson::Integer=M_ANDERSON,  # number of basis vectors to use in Anderson acceleration
+               τr_anderson::Real=TR_ANDERSON,  # relative tolerance; consider using Base.rtoldefault(Float)
+               τa_anderson::Real=TA_ANDERSON,  # absolute tolerance
+               maxit_anderson::Integer=MAXIT_ANDERSON,  # maximum number of Anderson iteration steps
                verbose::Bool=true)
     println("\nPump nonlasinge equation.")
     for d = dvec[1:end-1]  # d = dvec[end] will be handled in solve_salt! below
@@ -222,8 +237,8 @@ function pump!(lsol::LasingSol, lvar::LasingVar,
     println("\nFind lasing modes at pumped point.")
     solve_salt!(lsol, lvar, nlsol, nlvar, CC, param, dvec[end], setD₀!,
                 τr_newton=τr_newton, τa_newton=τa_newton, maxit_newton=maxit_newton,
-                τr_anderson=τr_anderson, τa_anderson=τa_anderson, maxit_anderson=maxit_anderson,
-                verbose=false)
+                m_anderson=m_anderson, τr_anderson=τr_anderson, τa_anderson=τa_anderson, maxit_anderson=maxit_anderson,
+                verbose=verbose)
 
     return nothing
 end
@@ -241,11 +256,12 @@ function simulate!(lsol::LasingSol, lvar::LasingVar,
                    setD₀!::Function;  # setD₀!(param, d) sets pump strength param.D₀ corresponding to pump strength parameter d
                    outωaψ::NTuple{3,Bool}=(true,true,false),  # true to output ω, a, ψ
                    doutvec::AbsVecReal=dvec,  # output results when dvec[i] ∈ doutvec
-                   τr_newton::Real=Base.rtoldefault(Float),  # relative tolerance for Newton method to solve nonlasing equation
-                   τa_newton::Real=eps(Float),  # absolute tolerance for Newton method to solve nonlasing equation
-                   maxit_newton::Integer=20,  # maximum number of Newton iteration steps
-                   τr_anderson::Real=1e-4,  # relative tolerance; consider using Base.rtoldefault(Float)
-                   τa_anderson::Real=1e-8,  # absolute tolerance
+                   τr_newton::Real=TR_NEWTON,  # relative tolerance for Newton method to solve nonlasing equation
+                   τa_newton::Real=TA_NEWTON,  # absolute tolerance for Newton method to solve nonlasing equation
+                   maxit_newton::Integer=MAXIT_NEWTON,  # maximum number of Newton iteration steps
+                   m_anderson::Integer=M_ANDERSON,  # number of basis vectors to use in Anderson acceleration
+                   τr_anderson::Real=TR_ANDERSON,  # relative tolerance; consider using Base.rtoldefault(Float)
+                   τa_anderson::Real=TA_ANDERSON,  # absolute tolerance
                    maxit_anderson::Integer=typemax(Int),  # maximum number of Anderson iteration steps
                    verbose::Bool=true)
     # Create output storages.
@@ -268,8 +284,8 @@ function simulate!(lsol::LasingSol, lvar::LasingVar,
         n_anderson, t_anderson =
             solve_salt!(lsol, lvar, nlsol, nlvar, CC, param, d, setD₀!,
                         τr_newton=τr_newton, τa_newton=τa_newton, maxit_newton=maxit_newton,
-                        τr_anderson=τr_anderson, τa_anderson=τa_anderson, maxit_anderson=maxit_anderson,
-                        verbose=false)
+                        m_anderson=m_anderson, τr_anderson=τr_anderson, τa_anderson=τa_anderson, maxit_anderson=maxit_anderson,
+                        verbose=verbose)
 
         # Output results for current d.
         if d == doutvec[cout]
@@ -315,14 +331,16 @@ function find_threshold!(lsol::LasingSol, lvar::LasingVar,
                          m::Integer,  # index of mode whose threshold is to be calculated
                          drng::Tuple{Real,Real},  # threshold is between drng[1] and drng[2]
                          setD₀!::Function;  # setD₀!(param, d) sets pump strength param.D₀ corresponding to pump strength parameter d
-                         maxit_bisect::Integer=50,  # maximum number of bisection steps
-                         τr_newton::Real=Base.rtoldefault(Float),  # relative tolerance for Newton method to solve nonlasing equation
-                         τa_newton::Real=eps(Float),  # absolute tolerance for Newton method to solve nonlasing equation
-                         maxit_newton::Integer=20,  # maximum number of Newton iteration steps
-                         τr_anderson::Real=1e-4,  # relative tolerance; consider using Base.rtoldefault(Float)
-                         τa_anderson::Real=1e-8,  # absolute tolerance
-                         τ_bisect::Real=1e-9,  # relative tolerance of bisection method
-                         maxit_anderson::Integer=typemax(Int),  # maximum number of Anderson iteration steps
+                         τr_bisect::Real=TR_BISECT,  # relative tolerance of bisection method
+                         τa_bisect::Real=TA_BISECT,  # absolute tolerance of bisection method
+                         maxit_bisect::Integer=MAXIT_BISECT,  # maximum number of bisection steps
+                         τr_newton::Real=TR_NEWTON,  # relative tolerance for Newton method to solve nonlasing equation
+                         τa_newton::Real=TA_NEWTON,  # absolute tolerance for Newton method to solve nonlasing equation
+                         maxit_newton::Integer=MAXIT_NEWTON,  # maximum number of Newton iteration steps
+                         m_anderson::Integer=M_ANDERSON,  # number of basis vectors to use in Anderson acceleration
+                         τr_anderson::Real=TR_ANDERSON,  # relative tolerance; consider using Base.rtoldefault(Float)
+                         τa_anderson::Real=TA_ANDERSON,  # absolute tolerance
+                         maxit_anderson::Integer=MAXIT_ANDERSON,  # maximum number of Anderson iteration steps
                          verbose::Bool=true)
     M = length(lsol)
     N = length(lsol.ψ[1])
@@ -336,14 +354,14 @@ function find_threshold!(lsol::LasingSol, lvar::LasingVar,
     d = dr
     solve_salt!(lsol, lvar, nlsol, nlvar, CC, param, d, setD₀!,
                 τr_newton=τr_newton, τa_newton=τa_newton, maxit_newton=maxit_newton,
-                τr_anderson=τr_anderson, τa_anderson=τa_anderson, maxit_anderson=maxit_anderson,
+                m_anderson=m_anderson, τr_anderson=τr_anderson, τa_anderson=τa_anderson, maxit_anderson=maxit_anderson,
                 verbose=verbose)
     lase_r = lsol.act[m]  # true if lasing at d = dr
 
     d = dl
     solve_salt!(lsol, lvar, nlsol, nlvar, CC, param, d, setD₀!,
                 τr_newton=τr_newton, τa_newton=τa_newton, maxit_newton=maxit_newton,
-                τr_anderson=τr_anderson, τa_anderson=τa_anderson, maxit_anderson=maxit_anderson,
+                m_anderson=m_anderson, τr_anderson=τr_anderson, τa_anderson=τa_anderson, maxit_anderson=maxit_anderson,
                 verbose=verbose)
     lase_l = lsol.act[m]  # true if lasing at d = dl
 
@@ -358,7 +376,7 @@ function find_threshold!(lsol::LasingSol, lvar::LasingVar,
         d = dc
         solve_salt!(lsol, lvar, nlsol, nlvar, CC, param, d, setD₀!,
                     τr_newton=τr_newton, τa_newton=τa_newton, maxit_newton=maxit_newton,
-                    τr_anderson=τr_anderson, τa_anderson=τa_anderson, maxit_anderson=maxit_anderson,
+                    m_anderson=m_anderson, τr_anderson=τr_anderson, τa_anderson=τa_anderson, maxit_anderson=maxit_anderson,
                     verbose=true)
         lase_c = lsol.act[m]  # true if lasing at d = dc
 
