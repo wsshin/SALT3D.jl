@@ -7,8 +7,12 @@ function Base.push!(lsol::LasingSol, m::Integer, nlsol::NonlasingSol)
     lsol.a²[m] = 0
     iₐ = lsol.iₐ[m] = nlsol.iₐ[m]
     ψ = lsol.ψ[m] .= nlsol.ψ[m]
-    # info("ψ[iₐ] = $(ψ[iₐ])")
-    assert(ψ[iₐ] == 1)  # make sure ψₘ is already normalized
+
+    # Below, we don't test if ψ[iₐ] == 1, because the normalization of ψ was done by complex
+    # division.  For a complex scalar z, z/z may not be exactly zero in floating-point
+    # arithmetic, because z/w is basically evaluated as z*conj(w) / abs(w)^2, during which
+    # rounding that could make z / z different from 1 occurs.
+    assert(ψ[iₐ] ≈ 1)  # make sure ψₘ is already normalized
 
     M = length(lsol)
     lsol.act[m] = true
@@ -35,7 +39,12 @@ function Base.push!(nlsol::NonlasingSol, m::Integer, lsol::LasingSol)
     nlsol.ω[m] = lsol.ω[m]  # scalar
     iₐ = nlsol.iₐ[m] = lsol.iₐ[m]  # scalar
     ψ = nlsol.ψ[m] .= lsol.ψ[m]  # vector
-    assert(ψ[iₐ] == 1)  # make sure ψₘ is already normalized
+
+    # Below, we don't test if ψ[iₐ] == 1, because the normalization of ψ was done by complex
+    # division.  For a complex scalar z, z/z may not be exactly zero in floating-point
+    # arithmetic, because z/w is basically evaluated as z*conj(w) / abs(w)^2, during which
+    # rounding that could make z / z different from 1 occurs.
+    assert(ψ[iₐ] ≈ 1)  # make sure ψₘ is already normalized
 
     M = length(nlsol)
     nlsol.act[m] = true
