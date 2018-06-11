@@ -138,8 +138,8 @@ function solve_salt!(lsol::LasingSol, lvar::LasingVar,
             println("\tCalculate lasing modes:")
             n_anderson, ll = solve_leq!(lsol, lvar, CC, param, τr=τr_anderson, τa=τa_anderson, maxit=maxit_anderson, verbose=verbose)
             t_anderson = toq()
-            # verbose && println("\tAnderson steps = $k, ‖leq‖ = $ll, ω ₗ = $(lsol.ω), aₗ² = $(lsol.a²)")
-            verbose && @printf("\tAnderson steps = %d (%f sec), ‖leq‖ = %.3e, ", n_anderson, t_anderson, ll); println("ω ₗ = $(lsol.ω), aₗ² = $(lsol.a²)")
+            # verbose && println("\tAnderson steps = $k, ‖leq‖ = $ll, ωₗ = $(lsol.ω), aₗ² = $(lsol.a²)")
+            verbose && @printf("\tAnderson steps = %d (%f sec), ‖leq‖ = %.3e, ", n_anderson, t_anderson, ll); println("ωₗ = $(lsol.ω), aₗ² = $(lsol.a²)")
 
             # Below, shutdown! checks if some of the newly calculated lasing modes have
             # a² ≤ 0.  If some do, it picks the one with the most negative a² and shuts
