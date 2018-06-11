@@ -348,7 +348,7 @@ function find_threshold!(lsol::LasingSol, lvar::LasingVar,
     lase_l = lsol.act[m]  # true if lasing at d = dl
 
     n_bisect = 0
-    println("After bisection step $n_bisect, lasing status of mode $m: $lase_l at d = $dl and $lase_r at d = $dr.")
+    println("After bisection step $n_bisect, lasing status of mode $m: $lase_l at d = $dl; $lase_r at d = $dr.")
 
     # In order to apply the search algorithm, the mode m must lase at only one of dl and dr.
     xor(lase_l, lase_r) || throw(ArgumentError("Must lase at one and only one of d = ($dl, $dr)."))
@@ -371,7 +371,7 @@ function find_threshold!(lsol::LasingSol, lvar::LasingVar,
         end
         assert(xor(lase_l, lase_r))
 
-        println("After bisection step $n_bisect, lasing status of mode $m: $lase_l at d = $dl and $lase_r at d = $dr.")
+        println("After bisection step $n_bisect, lasing status of mode $m: $lase_l at d = $dl; $lase_r at d = $dr.")
     end
 
     return d
