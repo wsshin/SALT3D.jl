@@ -395,7 +395,7 @@ function find_threshold!(lsol::LasingSol, lvar::LasingVar,
     # In order to apply the search algorithm, the mode m must lase at only one of dl and dr.
     xor(lase_l, lase_r) || throw(ArgumentError("Must lase at one and only one of d = ($dl, $dr)."))
 
-    while (n_bisect+=1) ≤ maxit_bisect && abs(dr-dl) > τ_bisect * abs(dr)
+    while (n_bisect+=1) ≤ maxit_bisect && abs(dr-dl) > max(τr_bisect * abs(dr), τa_bisect)
         dc = 0.5(dl+dr)
         d = dc
         solve_salt!(lsol, lvar, nlsol, nlvar, CC, param, d, setD₀!,
@@ -416,5 +416,5 @@ function find_threshold!(lsol::LasingSol, lvar::LasingVar,
         println("After bisection step $n_bisect, lasing status of mode $m: $lase_l at d = $dl; $lase_r at d = $dr.")
     end
 
-    return d
+    return 0.5(dl+dr)
 end
