@@ -79,7 +79,7 @@ function shutdown!(lsol::LasingSol, nlsol::NonlasingSol)
     m≠0 && lsol.a²[m]≤0 || return 0  # consider a² = 0 as nonlasing in order to keep lasing equations minimal
 
     # Now m ≠ 0 and lsol.a²[m] ≤ 0.
-    println("Shut down mode m = $m where aₗ[m=1:$(length(lsol))]² = $(lsol.a²)")
+    println("Shut down mode m = $m where aₗ²[m=1:$(length(lsol))] = $(lsol.a²)")
     push!(nlsol, m, lsol)
     pop!(lsol, m)
 
