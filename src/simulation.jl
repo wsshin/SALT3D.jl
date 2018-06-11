@@ -46,7 +46,7 @@ function solve_nleq!(nlsol::NonlasingSol,
         tic()
         k = 0
         lnleq₀ = norm_nleq(m, nlsol, nlvar, D, CC, param)
-        # verbose && println("\tInitial residual norm: ‖nleq₀‖ = $lnleq₀")
+        # verbose && println("  Initial residual norm: ‖nleq₀‖ = $lnleq₀")
 
         lnleq = lnleq₀
         if lnleq₀ > τa
@@ -58,8 +58,8 @@ function solve_nleq!(nlsol::NonlasingSol,
             end
         end
         t_newton = toq()
-        # verbose && println("\tmode $m: Newton steps = $k, ‖nleq‖ = $lnleq")
-        verbose && @printf("\tmode %d: Newton steps = %d (%f sec), ‖nleq‖ = %.3e\n", m, k, t_newton, lnleq)
+        # verbose && println("  mode $m: No. of Newton steps = $k, ‖nleq‖ = $lnleq")
+        verbose && @printf("    mode %d: No. of Newton steps = %d (%f sec), ‖nleq‖ = %.3e\n", m, k, t_newton, lnleq)
     end
 end
 
@@ -121,11 +121,12 @@ function solve_salt!(lsol::LasingSol, lvar::LasingVar,
             # previous D₀ and updates the corresponding modes by solving the lasing
             # equation for the new D₀.
             tic()
-            println("\tCalculate lasing modes:")
+            println("  Solve lasing eq. with modes m = $(lsol.m_act) where aₗ²[m=1:$(length(lsol))] = $(lsol.a²):")
             n_anderson, ll = solve_leq!(lsol, lvar, CC, param, τr=τr_anderson, τa=τa_anderson, maxit=maxit_anderson, m=m_anderson, verbose=verbose)
             t_anderson = toq()
-            # verbose && println("\tAnderson steps = $k, ‖leq‖ = $ll, ωₗ = $(lsol.ω), aₗ² = $(lsol.a²)")
-            verbose && @printf("\tAnderson steps = %d (%f sec), ‖leq‖ = %.3e, ", n_anderson, t_anderson, ll); println("ωₗ = $(lsol.ω), aₗ² = $(lsol.a²)")
+            # verbose && println("  No. of Anderson steps = $k, ‖leq‖ = $ll, ωₗ = $(lsol.ω), aₗ² = $(lsol.a²)")
+            verbose && @printf("    No. of Anderson steps = %d (%f sec), ‖leq‖ = %.3e\n", n_anderson, t_anderson, ll)
+            verbose && println("    Lasing solution: aₗ² = $(lsol.a²), ωₗ = $(lsol.ω)")
 
             # Below, shutdown! checks if some of the newly calculated lasing modes have
             # a² ≤ 0.  If some do, it picks the one with the most negative a² and shuts
@@ -153,10 +154,10 @@ function solve_salt!(lsol::LasingSol, lvar::LasingVar,
         # Below, solve_nleq! constructs the nonlasing equation for the new D₀ with the
         # already-calculated lasing modes and updates the nonlasing modes by solving the
         # equation.
-        println("\tCalculate nonlasing modes:")
+        println("  Solve nonlasing eq. with modes m = $(nlsol.m_act) where ωₙₗ[m=1:$(length(nlsol))] = $(string(nlsol.ω)[17:end]):")
         assert(lvar.inited)  # lvar.rvar.D is initialized
-        solve_nleq!(nlsol, nlvar, CC, param, lvar.rvar.D, τr=τr_newton, τa=τa_newton, maxit=maxit_newton, verbose=true)
-        verbose && println("\tωₙₗ = $(string(nlsol.ω)[17:end])")  # 17 is to skip header "Complex{Float64}"
+        solve_nleq!(nlsol, nlvar, CC, param, lvar.rvar.D, τr=τr_newton, τa=τa_newton, maxit=maxit_newton, verbose=verbose)
+        verbose && println("    Nonlasing solution: ωₙₗ = $(string(nlsol.ω)[17:end])")  # 17 is to skip header "Complex{Float64}"
 
         # Below, turnon! checks if some of the newly calculated nonlasing modes have
         # Im{ω} > 0.  If some do, it picks the one with the most positive ω and turns it
