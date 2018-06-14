@@ -13,6 +13,7 @@ mutable struct LasingSol{VC<:AbsVecComplex}  # VC can be PETSc vector
     a²::VecFloat  # M real numbers: squared "amplitudes" of modes
     ψ::Vector{VC}  # M complex vectors: normalized modes
     iₐ::VecInt  # M integers: row indices where amplitudes are measured
+    activated::VecBool  # activated[m] == true if mode m is just activated; used in simulate!
     active::VecBool  # active[m] == true if mode m is active (i.e., lasing)
     m_active::VecInt  # vector of active (i.e., lasing) mode indices; collection of m such that active[m] == true
     function LasingSol{VC}(ω::AbsVecReal,
@@ -32,7 +33,7 @@ mutable struct LasingSol{VC<:AbsVecComplex}  # VC can be PETSc vector
             end
         end
 
-        return new(ω, a², ψ, iₐ, fill(false,M), VecInt(0))
+        return new(ω, a², ψ, iₐ, fill(false,M), fill(false,M), VecInt(0))  # active[m]=false for all m: no mode is lasing
     end
 end
 LasingSol(ω::AbsVecReal, a²::AbsVecReal, ψ::AbsVec{VC}, iₐ::AbsVecInteger) where {VC<:AbsVecComplex} =

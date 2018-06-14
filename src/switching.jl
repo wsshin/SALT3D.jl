@@ -15,6 +15,7 @@ function Base.push!(lsol::LasingSol, m::Integer, nlsol::NonlasingSol)
     assert(ψ[iₐ] ≈ 1)  # make sure ψₘ is already normalized
 
     M = length(lsol)
+    lsol.activated[m] = true
     lsol.active[m] = true
     lsol.m_active = (1:M)[lsol.active]
 
@@ -47,6 +48,7 @@ function Base.push!(nlsol::NonlasingSol, m::Integer, lsol::LasingSol)
     assert(ψ[iₐ] ≈ 1)  # make sure ψₘ is already normalized
 
     M = length(nlsol)
+    nlsol.activated[m] = true
     nlsol.active[m] = true
     nlsol.m_active = (1:M)[nlsol.active]
 
@@ -73,12 +75,18 @@ function turnon!(lsol::LasingSol, nlsol::NonlasingSol)
     m≠0 && imag(nlsol.ω[m])>0 || return 0  # consider imag(ω) = 0 as nonlasing in order to keep lasing equations minimal
 
     # Now m ≠ 0 and imag(nlsol.ω[m]) > 0.
+    # If the mode m was shut down just now, do not turn it on; otherwise, turn on the mode.
     print_with_color(:blue, "Turning on mode $m where ωₙₗ[m=1:$(length(nlsol))] = $(string(nlsol.ω)[17:end])...  ")  # 17 is to skip header "Complex{Float64}"
-    push!(lsol, m, nlsol)
-    pop!(nlsol, m)
-    print_with_color(:blue, "Done!"); println()
-
-    return m
+    if nlsol.activated[m]  # mode m is just shut down
+        nlsol.ω[m] = real(nlsol.ω[m])
+        print_with_color(:light_blue, "Don't, because mode $m was shut down just now.\n")
+        return 0
+    else
+        push!(lsol, m, nlsol)
+        pop!(nlsol, m)
+        print_with_color(:blue, "Done.\n")
+        return m
+    end
 end
 
 
@@ -89,12 +97,18 @@ function shutdown!(lsol::LasingSol, nlsol::NonlasingSol)
     m≠0 && lsol.a²[m]≤0 || return 0  # consider a² = 0 as nonlasing in order to keep lasing equations minimal
 
     # Now m ≠ 0 and lsol.a²[m] ≤ 0.
+    # If the mode m was turned on just now, do not shut it down; otherwise, shut down the mode.
     print_with_color(:blue, "Shutting down mode $m where aₗ²[m=1:$(length(lsol))] = $(lsol.a²)...  ")
-    push!(nlsol, m, lsol)
-    pop!(lsol, m)
-    print_with_color(:blue, "Done!"); println()
-
-    return m
+    if lsol.activated[m]  # mode m is just turned on
+        lsol.a²[m] = 0
+        print_with_color(:light_blue, "Don't, because mode $m was turned on just now.\n")
+        return 0
+    else
+        push!(nlsol, m, lsol)
+        pop!(lsol, m)
+        print_with_color(:blue, "Done.\n")
+        return m
+    end
 end
 
 

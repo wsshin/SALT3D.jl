@@ -9,8 +9,6 @@ const TA_ANDERSON = 1e-6  # absolute tolerance for Anderson acceleration to solv
 const MAXIT_ANDERSON = typemax(Int)  # maximum number of Anderson iteration steps
 const M_ANDERSON = 2  # number of basis vectors to use in Anderson acceleration
 
-const MAXIT_INFLOOP = 0  # loop counter until infinite loop is determined (set to 0 because now we can determine it quite quickly)
-
 const TR_BISECT = Base.rtoldefault(Float)  # relative tolerance of bisection method
 const TA_BISECT = eps(Float)  # relative tolerance of bisection method
 const MAXIT_BISECT = 50  # maximum number of bisection steps
@@ -40,8 +38,11 @@ function solve_nleq!(nlsol::NonlasingSol,
     τa ≥ 0 || throw(ArgumentError("τa = $τa must be ≥ 0."))
     maxit ≥ 0 || throw(ArgumentError("maxit = $maxit must be ≥ 0."))
 
-    mvec = 1:length(nlsol)  # 1:M
-    for m = mvec
+    # Below, maybe I should iterate over only active nonlasing modes?  Which modes should be
+    # nonlasing is already decided by solving the lasing equation.
+    for m = nlsol.m_active
+    # mvec = 1:length(nlsol)  # 1:M
+    # for m = mvec
         # Newton method for nonlasing modes
         tic()
         k = 0
@@ -110,12 +111,12 @@ function solve_salt!(lsol::LasingSol, lvar::LasingVar,
     setD₀!(param, d)
     n_anderson = 0
     t_anderson = 0.0
-    n_infloop = 0
+    lsol.activated .= false  # no mode is just turned on
+    nlsol.activated .= false  # no mode is just shut down
     while true
         # Solve the lasing equation.
         # Calculating the lasing modes first is doable because the lasing equation can
         # be constructed for lasing modes without knowing nonlasing modes.
-        m_lastshutdown = 0
         while true
             # Below, solve_leq! takes the indices of the modes that lased for the
             # previous D₀ and updates the corresponding modes by solving the lasing
@@ -136,18 +137,11 @@ function solve_salt!(lsol::LasingSol, lvar::LasingVar,
             # power it held to all the other lasing modes and therefore could make all the
             # remaining nonpositive a² positive again.  Therefore, we must not shut down all
             # the lasing modes with a² ≤ 0, but do so only one-by-one.
-            m_shutdown = shutdown!(lsol, nlsol)
-
-            # If some mode was shut down above, continue the loop to perform solve_leq!
-            # again to recalculate the lasing modes only with the indices of the
-            # still-lasing modes.
             #
-            # If no mode was shut down, break the loop.
-            if m_shutdown ≠ 0
-                m_lastshutdown = m_shutdown
-            else  # m_shutdown == 0
-                break
-            end
+            # If some mode is shut down, continue the loop to perform solve_leq! again to
+            # recalculate the lasing modes only with the indices of the still-lasing modes.
+            # If no mode is shut down, break the loop.
+            shutdown!(lsol,nlsol) ≠ 0 || break
         end
 
         # Solve the nonlasing equation.
@@ -167,64 +161,11 @@ function solve_salt!(lsol::LasingSol, lvar::LasingVar,
         # hole-burning term and makes the system lossier, and therefore could make all the
         # remaining positive Im{ω} nonpositive again.  Therefore, we must not turn on all
         # the nonlasing modes with Im{ω} > 0, but do so only one-by-one.
-        m_turnon = turnon!(lsol, nlsol)
-
-        # If some mode was turned on above, continue the loop to perform solve_leq!
-        # again to recalculate the lasing modes including the newly turned-on mode.
-        # Before continuing the loop, however, make sure if the turned-on mode is not
-        # the one that was just shut down, because it that case continuing the loop will
-        # shut down the same mode again and we will fall into the infinite loop.  (I
-        # guess we should be able to prove that such an infinite loop should not occur in
-        # exact arithmetic.  Maybe a good research problem?  However, such a case can occur
-        # in reality becuase the lasing and nonlasing equations are not solved exactly,
-        # especially close to the threshold.)
         #
-        # If no mode was turned on, break the loop.
-        if m_turnon ≠ 0
-            if m_turnon==m_lastshutdown && n_anderson==0 # note m_lastshutdown ≠ 0
-                n_infloop += 1
-                if n_infloop ≤ MAXIT_INFLOOP
-                    println(); warn("Infinite loop might occur (loop count = $n_infloop): shut-down mode is turned on again.\n"
-                        * "Probably solving SALT too close to lasing threshold.  Then mode can be seen lasing and nonlasing simultaneously by slight inaccuracy.  "
-                        * "Could be automatically resolved in next few turns because lasing equation will be solved again with already good solution as initial guess.")
-                    # I initially thought that the Anderson acceleration for solving the
-                    # lasing equation in the next turn will stop immediately because an
-                    # already good solution is provided as an initial guess.  This is not
-                    # true, because it evaluates the residual for the current guess and
-                    # improve the solution from there until the relative tolerance is
-                    # satisfied.  Therefore, even though a shut-down mode is turned on again,
-                    # the mode still improves in the next turn and does not remain the same.
-                    #
-                    # Note that the improved initial guess is not the previously calculated
-                    # lasing solution, but the newly calculated nonlasing solution that is
-                    # turned on by turnon!.  (Maybe this is not so good initial guess for
-                    # lasing equation?  Should we cash the previous lasing solution?)
-                    #
-                    # OK, now I check if n_anderson==0.  In that case, the above mentioned
-                    # improvement of the lasing solution does not kick in.  Then, the
-                    # nonlasing equation will be solved again with a better initial guess.
-                    # When the mode turns on again, this better nonlasing solution will be
-                    # used as the initial guess for the lasing equation.  This varying
-                    # initial guess could eventually make the tolerance for the lasing
-                    # equation unsatisfied and therefore start the Anderson acceleration,
-                    # but if the quite accurately calculated nonlasing solution already
-                    # satisfies the tolerance of the lasing equation, the further
-                    # improvement of the nonlasing solution is likely to remain satisfying
-                    # the tolerance of the lasing equation.  Then, the lasing equation
-                    # will not be solved again, and aₗ², which is zero because it was just
-                    # turned on from the nonlasing solution, will remain zero after
-                    # solve_leq!, and therefore the mode will be shut down again, and it
-                    # will be turned on after solve_nleq!.
-                else  # n_infloop > MAXIT_INFLOOP
-                    throw(ErrorException("Infinite loop detected: shut-down mode is turned on again.\n"
-                        * "Probably solving SALT too close to lasing threshold.  Then mode can be seen lasing and nonlasing simultaneously by slight inaccuracy.  "
-                        * "Try to solve lasing equation more accurately by reducing τr_anderson and τa_anderson."))
-                end
-            end
-        else  # m_turnon == 0
-            n_infloop = 0
-            break
-        end
+        # If some mode is turned on, continue the loop to perform solve_leq! again to
+        # recalculate the lasing modes including the newly turned-on mode.  If no mode is
+        # turned on, break the loop.
+        turnon!(lsol,nlsol) ≠ 0 || break
     end
 
     check_conflict(lsol, nlsol)
