@@ -10,8 +10,8 @@ mutable struct NonlasingSol{VC<:AbsVecComplex}  # VC can be PETSc vector
     ω::VecComplex  # M complex numbers: frequencies of modes (M = # of nonlasing modes)
     ψ::Vector{VC}  # M complex vectors: normalized modes
     iₐ::VecInt  # M integers: row indices where amplitudes are measured
-    act::VecBool  # act[m] is true if mode m is active (i.e., nonlasing)
-    m_act::VecInt  # vector of active (i.e., nonlasing) mode indices; collection of m such that act[m] == true
+    active::VecBool  # active[m] is true if mode m is activeive (i.e., nonlasing)
+    m_active::VecInt  # vector of activeive (i.e., nonlasing) mode indices; collection of m such that active[m] == true
     function NonlasingSol{VC}(ω::AbsVecNumber,
                               ψ::AbsVec{<:AbsVecNumber},
                               iₐ::AbsVecInteger) where {VC<:AbsVecComplex}
@@ -50,7 +50,7 @@ NonlasingSol(N::Integer, M::Integer) = NonlasingSol(VecFloat(N), M)
 Base.length(nlsol::NonlasingSol) = length(nlsol.ψ)
 
 function Base.normalize!(nlsol::NonlasingSol)
-    for m = nlsol.m_act
+    for m = nlsol.m_active
         ψ = nlsol.ψ[m]
         iₐ = nlsol.iₐ[m]
         ψ ./= ψ[iₐ]  # make ψ[iₐ] = 1

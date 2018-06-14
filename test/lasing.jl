@@ -23,8 +23,8 @@ a² = rand(M)
 ψ = [Ψ[:,j] for j = 1:M]
 iarray = rand(1:N, M)
 sol = LasingSol(ω, a², ψ, iarray)  # ω = rand(M); this is fine because init_reduced_var does not use ω
-sol.act = fill(true, M)
-sol.m_act = collect(1:M)
+sol.active = fill(true, M)
+sol.m_active = collect(1:M)
 
 # Create ∆solution.
 ∆a² = rand(M)

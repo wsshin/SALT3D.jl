@@ -13,8 +13,8 @@ mutable struct LasingSol{VC<:AbsVecComplex}  # VC can be PETSc vector
     a²::VecFloat  # M real numbers: squared "amplitudes" of modes
     ψ::Vector{VC}  # M complex vectors: normalized modes
     iₐ::VecInt  # M integers: row indices where amplitudes are measured
-    act::VecBool  # act[m] is true if mode m is active (i.e., lasing)
-    m_act::VecInt  # vector of active (i.e., lasing) mode indices; collection of m such that act[m] == true
+    active::VecBool  # active[m] == true if mode m is active (i.e., lasing)
+    m_active::VecInt  # vector of active (i.e., lasing) mode indices; collection of m such that active[m] == true
     function LasingSol{VC}(ω::AbsVecReal,
                            a²::AbsVecReal,
                            ψ::AbsVec{<:AbsVecNumber},
@@ -47,7 +47,7 @@ LasingSol(N::Integer, M::Integer) = LasingSol(VecFloat(N), M)
 Base.length(lsol::LasingSol) = length(lsol.ψ)
 
 function Base.normalize!(lsol::LasingSol)
-    for m = lsol.m_act
+    for m = lsol.m_active
         ψ = lsol.ψ[m]
         iₐ = lsol.iₐ[m]
         ψ ./= ψ[iₐ]  # make ψ[iₐ] = 1
@@ -160,14 +160,14 @@ LasingModalVar(mtemp::AbsMat) =
 mutable struct LasingConstraint
     A::MatFloat  # constraint matrix
     b::VecFloat  # constraint vector
-    m2_act::VecBool  # vector of 2M booleans; true if corresponding row and column are active
+    m2_active::VecBool  # vector of 2M booleans; true if corresponding row and column are active
     LasingConstraint(M::Integer) = new(MatFloat(2M,2M), VecFloat(2M), VecBool(2M))
 end
 
 function activate!(cst::LasingConstraint, lsol::LasingSol)
     M = length(lsol)
     for m = 1:M
-        cst.m2_act[2m-1] = cst.m2_act[2m] = lsol.act[m]
+        cst.m2_active[2m-1] = cst.m2_active[2m] = lsol.active[m]
     end
 end
 
@@ -179,7 +179,7 @@ function ∆popinv!(∆D::AbsVecFloat,  # output
                   ∆lsol::∆LasingSol,
                   lsol::LasingSol)
     ∆D .= 0  # initialize
-    for m = lsol.m_act
+    for m = lsol.m_active
         ∆D .+= 2lsol.a²[m] .* real.(conj.(lsol.ψ[m]) .* ∆lsol.∆ψ[m])
     end
     ∆D .*= D′
@@ -192,7 +192,7 @@ end
 function ∇ₐ₂popinv!(∇ₐ₂D::AbsVec{<:AbsVecFloat},  # output
                     D′::AbsVecReal,  # derivative of population inversion; output of popinv′
                     lsol::LasingSol)
-    for m = lsol.m_act
+    for m = lsol.m_active
         ∇ₐ₂D[m] .= abs2.(lsol.ψ[m]) .* D′
     end
 
@@ -223,7 +223,7 @@ function init_reduced_var!(rvar::LasingReducedVar, ∆lsol::∆LasingSol, lsol::
     ∇ₐ₂popinv!(rvar.∇ₐ₂D, rvar.D′, lsol)
 
     # info("‖D‖ = $(norm(rvar.D)), ‖D′‖ = $(norm(rvar.D′)), ‖∆D‖ = $(norm(rvar.∆D))")
-    # for m = lsol.m_act
+    # for m = lsol.m_active
     #     info("‖∇ₐ₂D[$m]‖ = $(norm(rvar.∇ₐ₂D[m]))")
     # end
 
@@ -275,7 +275,7 @@ function init_lvar!(lvar::LasingVar, lsol::LasingSol, CC::AbsMatNumber, param::S
 
     init_∆lsol!(∆lsol)  # make ∆lsol all zero
     init_reduced_var!(rvar, ∆lsol, lsol, param)
-    for m = lsol.m_act
+    for m = lsol.m_active
         init_modal_var!(mvar_vec[m], m, lsol, rvar, CC, param)
     end
 
@@ -287,13 +287,13 @@ end
 
 function norm_leq(lsol::LasingSol, mvar_vec::AbsVec{<:LasingModalVar})
     leq² = 0.0
-    for m = lsol.m_act
+    for m = lsol.m_active
         A = mvar_vec[m].A
         ψ = lsol.ψ[m]
         leq² = max(leq², sum(abs2,A*ψ))  # 2-norm for each mode, 1-norm between modes
     end
 
-    return √leq²  # return 0.0 if lsol.m_act is empty
+    return √leq²  # return 0.0 if lsol.m_active is empty
 end
 
 function norm_leq(lsol::LasingSol, lvar::LasingVar, CC::AbsMatNumber, param::SALTParam)
@@ -355,7 +355,7 @@ function set_constraint!(cst::LasingConstraint,
     A[2m-1,2m-1] = real(ζω)
     A[2m,2m-1] = imag(ζω)
 
-    for j = lsol.m_act
+    for j = lsol.m_active
         vtemp .= ∇ₐ₂D[j] .* ω²γψ  # this uses no allocations
         ζa² = BLAS.dotu(r, vtemp)
         A[2m-1,2j] = real(ζa²)
@@ -392,7 +392,7 @@ function apply_∆solₘ!(lsol::LasingSol,
     vtemp = ∆lsol.vtemp
     vtemp .= (∆D .* ω²γψ) .+ (∆ω .* ∂f∂ω)
     # vtemp .= (∆ω .* ∂f∂ω)  # ∆D = 0
-    for j = lsol.m_act
+    for j = lsol.m_active
         # info("‖∇ₐ₂D[$j]‖ = $(norm(∇ₐ₂D[j]))")
         vtemp .+= ∆a²[j] .* (∇ₐ₂D[j] .* ω²γψ)
     end
@@ -443,25 +443,25 @@ function update_lsol!(lsol::LasingSol,
     # Construct the constraint equation on ∆ω and ∆a.
     cst.A .= 0
     cst.b .= 0
-    for m = lsol.m_act
+    for m = lsol.m_active
         set_constraint!(cst, ∆lsol, lsol, m, mvar_vec[m], rvar)
     end
 
     # Calculate ∆ω and ∆a.
     activate!(cst, lsol)
-    ind = cst.m2_act
+    ind = cst.m2_active
     ∆ωa² = cst.A[ind,ind] \ cst.b[ind]
     # info("cst.A = $(cst.A[ind,ind]), cst.b = $(cst.b[ind]), ∆ωa² = $∆ωa²")
     c = 0  # count
-    for m = lsol.m_act
+    for m = lsol.m_active
         c += 1
         ∆lsol.∆ω[m] = ∆ωa²[2c-1]
         ∆lsol.∆a²[m] = ∆ωa²[2c]
     end
 
     # Update ∆ψ.
-    # info("lsol.ω = $(lsol.ω), lsol.a² = $(lsol.a²), lsol.m_act = $(lsol.m_act)")
-    for m = lsol.m_act
+    # info("lsol.ω = $(lsol.ω), lsol.a² = $(lsol.a²), lsol.m_active = $(lsol.m_active)")
+    for m = lsol.m_active
         # info("before apply: ‖lsol.ψ[$m]‖ = $(norm(lsol.ψ[m]))")
         apply_∆solₘ!(lsol, ∆lsol, m, mvar_vec[m], rvar)
         # info("after apply: ‖lsol.ψ[$m]‖ = $(norm(lsol.ψ[m]))")
@@ -479,13 +479,13 @@ end
 # a real PETSc vector.
 
 function lsol2rvec(lsol::LasingSol)
-    m_act = lsol.m_act
-    ψr = reinterpret.(Float, lsol.ψ[lsol.m_act])
-    # ψr = lsol.ψ[lsol.m_act]  # complex version
+    m_active = lsol.m_active
+    ψr = reinterpret.(Float, lsol.ψ[lsol.m_active])
+    # ψr = lsol.ψ[lsol.m_active]  # complex version
 
-    return CatView(lsol.ω[lsol.m_act], lsol.a²[lsol.m_act], ψr...)
+    return CatView(lsol.ω[lsol.m_active], lsol.a²[lsol.m_active], ψr...)
     # return CatView(ψr...)
-    # return CatView(lsol.ω[lsol.m_act], lsol.a²[lsol.m_act])
+    # return CatView(lsol.ω[lsol.m_active], lsol.a²[lsol.m_active])
 end
 
 

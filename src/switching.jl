@@ -15,8 +15,8 @@ function Base.push!(lsol::LasingSol, m::Integer, nlsol::NonlasingSol)
     assert(ψ[iₐ] ≈ 1)  # make sure ψₘ is already normalized
 
     M = length(lsol)
-    lsol.act[m] = true
-    lsol.m_act = (1:M)[lsol.act]
+    lsol.active[m] = true
+    lsol.m_active = (1:M)[lsol.active]
 
     return nothing
 end
@@ -26,8 +26,8 @@ function Base.pop!(lsol::LasingSol, m::Integer)
     lsol.ψ[m] .= 0  # good for compressing data when writing in file
 
     M = length(lsol)
-    lsol.act[m] = false
-    lsol.m_act = (1:M)[lsol.act]
+    lsol.active[m] = false
+    lsol.m_active = (1:M)[lsol.active]
 
     return nothing
 end
@@ -47,8 +47,8 @@ function Base.push!(nlsol::NonlasingSol, m::Integer, lsol::LasingSol)
     assert(ψ[iₐ] ≈ 1)  # make sure ψₘ is already normalized
 
     M = length(nlsol)
-    nlsol.act[m] = true
-    nlsol.m_act = (1:M)[nlsol.act]
+    nlsol.active[m] = true
+    nlsol.m_active = (1:M)[nlsol.active]
 
     return nothing
 end
@@ -58,8 +58,8 @@ function Base.pop!(nlsol::NonlasingSol, m::Integer)
     nlsol.ψ[m] .= 0  # good for compressing data when writing in file
 
     M = length(nlsol)
-    nlsol.act[m] = false
-    nlsol.m_act = (1:M)[nlsol.act]
+    nlsol.active[m] = false
+    nlsol.m_active = (1:M)[nlsol.active]
 
     return nothing
 end
@@ -69,7 +69,7 @@ end
 # part, if any.  See Sec. III.D of the SALT paper.
 # Return the index of the mode to turn on; return 0 otherwise.
 function turnon!(lsol::LasingSol, nlsol::NonlasingSol)
-    m = indmax(imag, nlsol.ω, nlsol.m_act)  # m==0 if nlsol.m_act is empty
+    m = indmax(imag, nlsol.ω, nlsol.m_active)  # m==0 if nlsol.m_active is empty
     m≠0 && imag(nlsol.ω[m])>0 || return 0  # consider imag(ω) = 0 as nonlasing in order to keep lasing equations minimal
 
     # Now m ≠ 0 and imag(nlsol.ω[m]) > 0.
@@ -85,7 +85,7 @@ end
 # Prepare NonlasingSol by shutting down the lasing mode with negative amplitude, if any.
 # Return the index of the mode to shut down; return 0 otherwise.
 function shutdown!(lsol::LasingSol, nlsol::NonlasingSol)
-    m = indmin(identity, lsol.a², lsol.m_act)  # m==0 if lsol.m_act is empty
+    m = indmin(identity, lsol.a², lsol.m_active)  # m==0 if lsol.m_active is empty
     m≠0 && lsol.a²[m]≤0 || return 0  # consider a² = 0 as nonlasing in order to keep lasing equations minimal
 
     # Now m ≠ 0 and lsol.a²[m] ≤ 0.
@@ -106,7 +106,7 @@ function check_conflict(lsol, nlsol)
         throw(ArgumentError("length(lsol) = $M and length(nlsol) = $(length(nlsol)) must be the same."))
 
     for m = 1:M
-        xor(lsol.act[m], nlsol.act[m]) ||
+        xor(lsol.active[m], nlsol.active[m]) ||
             throw(ArgumentError("Mode $m must be either lasing or nonlasing, exclusively."))
     end
 

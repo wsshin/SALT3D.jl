@@ -121,7 +121,7 @@ function solve_salt!(lsol::LasingSol, lvar::LasingVar,
             # previous D₀ and updates the corresponding modes by solving the lasing
             # equation for the new D₀.
             tic()
-            println("  Solve lasing eq. with modes m = $(lsol.m_act) where aₗ²[m=1:$(length(lsol))] = $(lsol.a²):")
+            println("  Solve lasing eq. with modes m = $(lsol.m_active) where aₗ²[m=1:$(length(lsol))] = $(lsol.a²):")
             n_anderson, ll = solve_leq!(lsol, lvar, CC, param, τr=τr_anderson, τa=τa_anderson, maxit=maxit_anderson, m=m_anderson, verbose=verbose)
             t_anderson = toq()
             # verbose && println("  No. of Anderson steps = $k, ‖leq‖ = $ll, ωₗ = $(lsol.ω), aₗ² = $(lsol.a²)")
@@ -154,7 +154,7 @@ function solve_salt!(lsol::LasingSol, lvar::LasingVar,
         # Below, solve_nleq! constructs the nonlasing equation for the new D₀ with the
         # already-calculated lasing modes and updates the nonlasing modes by solving the
         # equation.
-        println("  Solve nonlasing eq. with modes m = $(nlsol.m_act) where ωₙₗ[m=1:$(length(nlsol))] = $(string(nlsol.ω)[17:end]):")
+        println("  Solve nonlasing eq. with modes m = $(nlsol.m_active) where ωₙₗ[m=1:$(length(nlsol))] = $(string(nlsol.ω)[17:end]):")
         assert(lvar.inited)  # lvar.rvar.D is initialized
         solve_nleq!(nlsol, nlvar, CC, param, lvar.rvar.D, τr=τr_newton, τa=τa_newton, maxit=maxit_newton, verbose=verbose)
         verbose && println("    Nonlasing solution: ωₙₗ = $(string(nlsol.ω)[17:end])")  # 17 is to skip header "Complex{Float64}"
@@ -317,20 +317,20 @@ function simulate!(lsol::LasingSol, lvar::LasingVar,
             tAA[cout] = t_anderson
 
             # Output the lasing modes.
-            m_act = lsol.m_act
-            outω && (ωout[m_act,cout] .= lsol.ω[m_act])
-            outa && (aout[m_act,cout] .= .√lsol.a²[m_act])
+            m_active = lsol.m_active
+            outω && (ωout[m_active,cout] .= lsol.ω[m_active])
+            outa && (aout[m_active,cout] .= .√lsol.a²[m_active])
             if outψ
-                for m = m_act
+                for m = m_active
                     ψout[m,cout,:] .= lsol.ψ[m]
                 end
             end
 
             # Output nonlasing modes.
-            m_act = nlsol.m_act  # this does not conflict with lsol.m_act, because check_conflict() passed
-            outω && (ωout[m_act,cout] .= nlsol.ω[m_act])
+            m_active = nlsol.m_active  # this does not conflict with lsol.m_active, because check_conflict() passed
+            outω && (ωout[m_active,cout] .= nlsol.ω[m_active])
             if outψ
-                for m = m_act
+                for m = m_active
                     ψout[m,cout,:] .= nlsol.ψ[m]
                 end
             end
@@ -380,14 +380,14 @@ function find_threshold!(lsol::LasingSol, lvar::LasingVar,
                 τr_newton=τr_newton, τa_newton=τa_newton, maxit_newton=maxit_newton,
                 m_anderson=m_anderson, τr_anderson=τr_anderson, τa_anderson=τa_anderson, maxit_anderson=maxit_anderson,
                 verbose=verbose)
-    lase_r = lsol.act[m]  # true if lasing at d = dr
+    lase_r = lsol.active[m]  # true if lasing at d = dr
 
     d = dl
     solve_salt!(lsol, lvar, nlsol, nlvar, CC, param, d, setD₀!,
                 τr_newton=τr_newton, τa_newton=τa_newton, maxit_newton=maxit_newton,
                 m_anderson=m_anderson, τr_anderson=τr_anderson, τa_anderson=τa_anderson, maxit_anderson=maxit_anderson,
                 verbose=verbose)
-    lase_l = lsol.act[m]  # true if lasing at d = dl
+    lase_l = lsol.active[m]  # true if lasing at d = dl
 
     n_bisect = 0
     println("After bisection step $n_bisect, lasing status of mode $m: $lase_l at d = $dl; $lase_r at d = $dr.")
@@ -402,7 +402,7 @@ function find_threshold!(lsol::LasingSol, lvar::LasingVar,
                     τr_newton=τr_newton, τa_newton=τa_newton, maxit_newton=maxit_newton,
                     m_anderson=m_anderson, τr_anderson=τr_anderson, τa_anderson=τa_anderson, maxit_anderson=maxit_anderson,
                     verbose=true)
-        lase_c = lsol.act[m]  # true if lasing at d = dc
+        lase_c = lsol.active[m]  # true if lasing at d = dc
 
         if lase_c == lase_l
             dl = dc
