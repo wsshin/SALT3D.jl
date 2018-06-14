@@ -26,7 +26,7 @@ function anderson_salt!(lsol::LasingSol,
     lleq₀ = norm_leq(lsol, lvar, CC, param)
     # verbose && println(msgprefix * "Anderson acceleration:")
     verbose && println(msgprefix * "Initial residual norm: ‖leq₀‖ = $lleq₀")
-    lleq₀ ≤ τa && return k, lleq₀  # lsol.m_act = [] falls to this as well
+    lleq₀ ≤ τa && return k, lleq₀  # lsol.m_active = [] falls to this as well
     τ = max(τr*lleq₀, τa)
 
     x = lsol2rvec(lsol)
