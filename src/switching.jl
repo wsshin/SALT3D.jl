@@ -36,7 +36,7 @@ end
 # Lasing -> Nonlasing: take the mth lasing mode and use it to set the guess information
 # about the mth nonlasing mode.
 function Base.push!(nlsol::NonlasingSol, m::Integer, lsol::LasingSol)
-    nlsol.ω[m] = lsol.ω[m]  # scalar
+    nlsol.ω[m] = lsol.ω[m]  # real scalar
     iₐ = nlsol.iₐ[m] = lsol.iₐ[m]  # scalar
     ψ = nlsol.ψ[m] .= lsol.ψ[m]  # vector
 
