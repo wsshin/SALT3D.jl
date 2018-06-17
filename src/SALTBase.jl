@@ -1,4 +1,4 @@
-module SALT3D
+module SALTBase
 
 using MaxwellFDM, GeometryPrimitives, CatViews, StaticArrays
 

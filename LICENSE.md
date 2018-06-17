@@ -1,4 +1,4 @@
-The SALT3D.jl package is licensed under the MIT "Expat" License:
+The SALTBase.jl package is licensed under the MIT "Expat" License:
 
 > Copyright (c) 2017: Wonseok Shin.
 >

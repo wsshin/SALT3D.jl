@@ -1,4 +1,4 @@
-using SALT3D
+using SALTBase
 using Base.Test
 
 include("base.jl")

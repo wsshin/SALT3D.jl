@@ -32,7 +32,7 @@ sol.m_active = collect(1:M)
 ∆Ψ = randn(N,M) + im .* randn(N,M)
 ∆ψ = [∆Ψ[:,j] for j = 1:M]
 vtemp = similar(∆ψ[1])
-∆sol = SALT3D.∆LasingSol(∆ω, ∆a², ∆ψ, vtemp)
+∆sol = SALTBase.∆LasingSol(∆ω, ∆a², ∆ψ, vtemp)
 
 # Check reduced variables.
 hb = Vector{Float64}(N)
@@ -40,11 +40,11 @@ hole_burning!(hb, a², ψ)
 D = D₀ ./ hb
 D′ = -D₀ ./ abs2.(hb)
 ∆D = similar(D)
-SALT3D.∆popinv!(∆D, D′, ∆sol, sol)
+SALTBase.∆popinv!(∆D, D′, ∆sol, sol)
 ∇ₐ₂D = [zeros(N) for m = 1:M]
-SALT3D.∇ₐ₂popinv!(∇ₐ₂D, D′, sol)
-rvar = SALT3D.LasingReducedVar(N, M)
-SALT3D.init_reduced_var!(rvar, ∆sol, sol, param)
+SALTBase.∇ₐ₂popinv!(∇ₐ₂D, D′, sol)
+rvar = SALTBase.LasingReducedVar(N, M)
+SALTBase.init_reduced_var!(rvar, ∆sol, sol, param)
 @testset "reduced variables" begin
     @test rvar.D ≈ D
     @test rvar.D′ ≈ D′
@@ -60,8 +60,8 @@ Ce = create_curl(PRIM, Ngrid)
 Ch = create_curl(DUAL, Ngrid)
 CC = Ch*Ce
 
-mvar = SALT3D.LasingModalVar(CC)
-SALT3D.init_modal_var!(mvar, m, sol, rvar, CC, param)
+mvar = SALTBase.LasingModalVar(CC)
+SALTBase.init_modal_var!(mvar, m, sol, rvar, CC, param)
 
 γ = gain(ωₘ, ωₐ, γ⟂)
 γ′ = gain′(ωₘ, ωₐ, γ⟂)
