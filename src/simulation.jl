@@ -1,22 +1,33 @@
 export pump!, simulate!, find_threshold!
 
-const TR_NEWTON = Base.rtoldefault(Float)  # relative tolerance for Newton method to solve nonlasing equation
-const TA_NEWTON = eps(Float)  # absolute tolerance for Newton method to solve nonlasing equation
+const TA_NEWTON = Base.rtoldefault(Float)  # absolute tolerance for Newton method to solve nonlasing equation
+const TR_NEWTON = sqrt(TA_NEWTON)  # relative tolerance for Newton method to solve nonlasing equation
 const MAXIT_NEWTON = 20  # maximum number of Newton iteration steps
 
-const TR_ANDERSON = 1e-4  # relative tolerance for Anderson acceleration to solve lasing equation; consider using Base.rtoldefault(Float)
-const TA_ANDERSON = 1e-6  # absolute tolerance for Anderson acceleration to solve lasing equation
-const MAXIT_ANDERSON = typemax(Int)  # maximum number of Anderson iteration steps
+const TA_ANDERSON = Base.rtoldefault(Float) # absolute tolerance for Anderson acceleration to solve lasing equation
+const TR_ANDERSON = sqrt(TA_ANDERSON)  # relative tolerance for Anderson acceleration to solve lasing equation; consider using Base.rtoldefault(Float)
+const MAXIT_ANDERSON = 20  # maximum number of Anderson iteration steps
 const M_ANDERSON = 2  # number of basis vectors to use in Anderson acceleration
 
-const TR_BISECT = Base.rtoldefault(Float)  # relative tolerance of bisection method
-const TA_BISECT = eps(Float)  # relative tolerance of bisection method
-const MAXIT_BISECT = 50  # maximum number of bisection steps
+const TA_THRESHOLD = eps(Float)  # relative tolerance of bisection method
+const TR_THRESHOLD = sqrt(TA_THRESHOLD)  # relative tolerance of bisection method
+const MAXIT_THRESHOLD = 50  # maximum number of bisection steps
 
 # solve_leq! is just a new name of anderson_salt!.  norm_leq and update_lsol! are called
 # inside anderson_salt!.
-solve_leq!(lsol, lvar, CC, param; m=M_ANDERSON, τr=TR_ANDERSON, τa=TA_ANDERSON, maxit=MAXIT_ANDERSON, verbose=true) =
-    anderson_salt!(lsol, lvar, CC, param, m=m, τr=τr, τa=τa, maxit=maxit, verbose=verbose)
+function solve_leq!(lsol, lvar, CC, param; m=M_ANDERSON, τr=TR_ANDERSON, τa=TA_ANDERSON, maxit=MAXIT_ANDERSON, verbose=true)
+    println("  Solve lasing eq. with modes m = $(lsol.m_active) where aₗ²[m=1:$(length(lsol))] = $(lsol.a²):")
+
+    tic()
+    n_anderson, ll, ll₀ = anderson_salt!(lsol, lvar, CC, param, m=m, τr=τr, τa=τa, maxit=maxit, verbose=verbose)
+    t_anderson = toq()
+
+    # verbose && println("  No. of Anderson steps = $k, ‖leq‖ = $ll, ωₗ = $(lsol.ω), aₗ² = $(lsol.a²)")
+    verbose && @printf("    No. of Anderson steps = %d (%f sec), ‖leq‖ = %.3e, ‖leq‖/‖leq₀‖ = %.3e\n", n_anderson, t_anderson, ll, ll/ll₀)
+    verbose && println("    Lasing solution: aₗ² = $(lsol.a²), ωₗ = $(lsol.ω)")
+
+    return n_anderson, t_anderson
+end
 
 # Solve the nonlasing equation without the spatial hole-burning term.
 #
@@ -38,11 +49,9 @@ function solve_nleq!(nlsol::NonlasingSol,
     τa ≥ 0 || throw(ArgumentError("τa = $τa must be ≥ 0."))
     maxit ≥ 0 || throw(ArgumentError("maxit = $maxit must be ≥ 0."))
 
-    # Below, maybe I should iterate over only active nonlasing modes?  Which modes should be
-    # nonlasing is already decided by solving the lasing equation.
+    println("  Solve nonlasing eq. with modes m = $(nlsol.m_active) where ωₙₗ[m=1:$(length(nlsol))] = $(string(nlsol.ω)[17:end]):")
+
     for m = nlsol.m_active
-    # mvec = 1:length(nlsol)  # 1:M
-    # for m = mvec
         # Newton method for nonlasing modes
         tic()
         k = 0
@@ -60,8 +69,10 @@ function solve_nleq!(nlsol::NonlasingSol,
         end
         t_newton = toq()
         # verbose && println("  mode $m: No. of Newton steps = $k, ‖nleq‖ = $lnleq")
-        verbose && @printf("    mode %d: No. of Newton steps = %d (%f sec), ‖nleq‖ = %.3e\n", m, k, t_newton, lnleq)
+        verbose && @printf("    mode %d: No. of Newton steps = %d (%f sec), ‖nleq‖ = %.3e, ‖nleq‖/‖nleq₀‖ = %.3e\n", m, k, t_newton, lnleq, lnleq/lnleq₀)
     end
+
+    verbose && println("    Nonlasing solution: ωₙₗ = $(string(nlsol.ω)[17:end])")  # 17 is to skip header "Complex{Float64}"
 end
 
 
@@ -111,8 +122,8 @@ function solve_salt!(lsol::LasingSol, lvar::LasingVar,
     setD₀!(param, d)
     n_anderson = 0
     t_anderson = 0.0
-    lsol.activated .= false  # no mode is just turned on
-    nlsol.activated .= false  # no mode is just shut down
+    lsol.activated .= false  # no lasing mode is just activated
+    nlsol.activated .= false  # no nonlasing mode is just activated
     while true
         # Solve the lasing equation.
         # Calculating the lasing modes first is doable because the lasing equation can
@@ -121,13 +132,7 @@ function solve_salt!(lsol::LasingSol, lvar::LasingVar,
             # Below, solve_leq! takes the indices of the modes that lased for the
             # previous D₀ and updates the corresponding modes by solving the lasing
             # equation for the new D₀.
-            tic()
-            println("  Solve lasing eq. with modes m = $(lsol.m_active) where aₗ²[m=1:$(length(lsol))] = $(lsol.a²):")
-            n_anderson, ll = solve_leq!(lsol, lvar, CC, param, τr=τr_anderson, τa=τa_anderson, maxit=maxit_anderson, m=m_anderson, verbose=verbose)
-            t_anderson = toq()
-            # verbose && println("  No. of Anderson steps = $k, ‖leq‖ = $ll, ωₗ = $(lsol.ω), aₗ² = $(lsol.a²)")
-            verbose && @printf("    No. of Anderson steps = %d (%f sec), ‖leq‖ = %.3e\n", n_anderson, t_anderson, ll)
-            verbose && println("    Lasing solution: aₗ² = $(lsol.a²), ωₗ = $(lsol.ω)")
+            n_anderson, t_anderson = solve_leq!(lsol, lvar, CC, param, τr=τr_anderson, τa=τa_anderson, maxit=maxit_anderson, m=m_anderson, verbose=verbose)
 
             # Below, shutdown! checks if some of the newly calculated lasing modes have
             # a² ≤ 0.  If some do, it picks the one with the most negative a² and shuts
@@ -137,21 +142,22 @@ function solve_salt!(lsol::LasingSol, lvar::LasingVar,
             # power it held to all the other lasing modes and therefore could make all the
             # remaining nonpositive a² positive again.  Therefore, we must not shut down all
             # the lasing modes with a² ≤ 0, but do so only one-by-one.
+            m_shutdown = shutdown!(lsol, nlsol)
+
+            # If some mode was shut down above, continue the loop to perform solve_leq!
+            # again to recalculate the lasing modes only with the indices of the
+            # still-lasing modes.
             #
-            # If some mode is shut down, continue the loop to perform solve_leq! again to
-            # recalculate the lasing modes only with the indices of the still-lasing modes.
-            # If no mode is shut down, break the loop.
-            shutdown!(lsol,nlsol) ≠ 0 || break
+            # If no mode was shut down, break the loop.
+            m_shutdown ≠ 0 || break
         end
 
         # Solve the nonlasing equation.
         # Below, solve_nleq! constructs the nonlasing equation for the new D₀ with the
         # already-calculated lasing modes and updates the nonlasing modes by solving the
         # equation.
-        println("  Solve nonlasing eq. with modes m = $(nlsol.m_active) where ωₙₗ[m=1:$(length(nlsol))] = $(string(nlsol.ω)[17:end]):")
         assert(lvar.inited)  # lvar.rvar.D is initialized
         solve_nleq!(nlsol, nlvar, CC, param, lvar.rvar.D, τr=τr_newton, τa=τa_newton, maxit=maxit_newton, verbose=verbose)
-        verbose && println("    Nonlasing solution: ωₙₗ = $(string(nlsol.ω)[17:end])")  # 17 is to skip header "Complex{Float64}"
 
         # Below, turnon! checks if some of the newly calculated nonlasing modes have
         # Im{ω} > 0.  If some do, it picks the one with the most positive ω and turns it
@@ -161,11 +167,13 @@ function solve_salt!(lsol::LasingSol, lvar::LasingVar,
         # hole-burning term and makes the system lossier, and therefore could make all the
         # remaining positive Im{ω} nonpositive again.  Therefore, we must not turn on all
         # the nonlasing modes with Im{ω} > 0, but do so only one-by-one.
+        m_turnon = turnon!(lsol, nlsol)
+
+        # If some mode was turned on above, continue the loop to perform solve_leq!
+        # again to recalculate the lasing modes including the newly turned-on mode.
         #
-        # If some mode is turned on, continue the loop to perform solve_leq! again to
-        # recalculate the lasing modes including the newly turned-on mode.  If no mode is
-        # turned on, break the loop.
-        turnon!(lsol,nlsol) ≠ 0 || break
+        # If no mode was turned on, break the loop.
+        m_turnon ≠ 0 || break
     end
 
     check_conflict(lsol, nlsol)
@@ -284,29 +292,179 @@ function simulate!(lsol::LasingSol, lvar::LasingVar,
 end
 
 
-# Find the threshold of the mode with a given mode index.
+# Find the threshold of the mode with a given mode index using the secant method.
+#
+# At the threshold d = dτ we seek to obtain, except for the mode (or modes, if degenerate)
+# of interest, all the other modes are either sufficiently above their thresholds (and
+# therefore lasing), or sufficiently below their thresholds (and therefore nonlasing).
+#
+# This method assumes that all the modes that should be lasing at d = dτ (except for the
+# modes of interest that should be on set of lasing at d = dτ) are turned on at both d = dl
+# and dr, where (dl, dr) = drng.  This is because the methed assumes that the only modes
+# that turn on or shut down during the application of the quasi-Newton method are the modes
+# of interest.
+#
+# This method solves only the lasing equation during the quasi-Newton iteration, but solves
+# the nonlasing equation after finding the threshold to verify it in the nonlasing equation.
+function find_threshold_secant!(lsol::LasingSol, lvar::LasingVar,
+                                nlsol::NonlasingSol, nlvar::NonlasingVar,
+                                CC::AbsMatNumber,
+                                param::SALTParam,
+                                m::Integer,  # index of mode whose threshold is to be calculated
+                                drng::Tuple{Real,Real},  # threshold is between drng[1] and drng[2]
+                                setD₀!::Function;  # setD₀!(param, d) sets pump strength param.D₀ corresponding to pump strength parameter d
+                                τr_threshold::Real=TR_THRESHOLD,  # relative tolerance of secant method
+                                τa_threshold::Real=TA_THRESHOLD,  # absolute tolerance of secant method
+                                maxit_threshold::Integer=MAXIT_THRESHOLD,  # maximum number of secant steps
+                                τr_newton::Real=TR_NEWTON,  # relative tolerance for Newton method to solve nonlasing equation
+                                τa_newton::Real=TA_NEWTON,  # absolute tolerance for Newton method to solve nonlasing equation
+                                maxit_newton::Integer=MAXIT_NEWTON,  # maximum number of Newton iteration steps
+                                m_anderson::Integer=M_ANDERSON,  # number of basis vectors to use in Anderson acceleration
+                                τr_anderson::Real=TR_ANDERSON,  # relative tolerance; consider using Base.rtoldefault(Float)
+                                τa_anderson::Real=TA_ANDERSON,  # absolute tolerance
+                                maxit_anderson::Integer=MAXIT_ANDERSON,  # maximum number of Anderson iteration steps
+                                verbose::Bool=true)
+    check_conflict(lsol, nlsol)
+    M = length(lsol)
+    N = length(lsol.ψ[1])
+
+    # Below, dl ≤ dr does not have to hold.  dr is just d examined later than dl in the
+    # pump parameter scan outside this function.
+    xₙ₋₁, xₙ = drng
+
+    # Assume the threshold is between dl and dr.  This assumption is not necessary for the
+    # secant method,
+    println("\nStart secant method to find threshold of mode $m between d = $xₙ₋₁ and $xₙ.")
+
+    # Solve the lasing equation at d = xₙ first, because lsol is likely to contain the guess
+    # for d = xₙ.
+    d = xₙ
+    if !lsol.active[m]
+        # Here, we don't use turnon! because we want to push the nonlasing mode m as a guess
+        # for the lasing mode m even if it has Im{ωₙₗ} < 0.  (turnon! does not turn on such
+        # a mode.)  In that case, upon solving the lasing equation, the lasing mode m will
+        # have a² < 0, which is still used as a function value in the quasi-Newton method.
+        push!(lsol, m, nlsol)
+        pop!(nlsol, m)
+    end
+    assert(lsol.active[m])
+
+    println("d = $d:")
+    setD₀!(param, d)
+    solve_leq!(lsol, lvar, CC, param, m=m_anderson, τr=τr_anderson, τa=τa_anderson, maxit=maxit_anderson, verbose=verbose)
+    fₙ = lsol.a²[m]
+
+
+    # Solve the lasing equation at d = xₙ₋₁.  Note that lsol.active[m] == true now, so we
+    # don't have to perform push!(lsol, m, nlsol).
+    d = xₙ₋₁
+    println("d = $d:")
+    setD₀!(param, d)
+    solve_leq!(lsol, lvar, CC, param, m=m_anderson, τr=τr_anderson, τa=τa_anderson, maxit=maxit_anderson, verbose=verbose)
+    fₙ₋₁ = lsol.a²[m]
+
+    # Make xₙ closer to the root than xₙ₋₁.  This is unnecessary in Newton's method
+    # where the slope is calculate at xₙ₊₁, but necessary in the quasi-Newton method where
+    # the slope is approximated by (fₙ₊₁-fₙ)/(xₙ₊₁-xₙ).  xₙ₊₁ is obtained regardless of the
+    # order of xₙ and xₙ₊₁ because it is the location where the line connecting (xₙ,fₙ) and
+    # (xₙ₊₁,fₙ₊₁) crosses the horizontal axis.  However, (fₙ₊₁-fₙ)/(xₙ₊₁-xₙ) is different
+    # from (fₙ₊₁-fₙ₋₁)/(xₙ₊₁-xₙ₋₁), and the latter would be a better approximation of
+    # f′(xₙ₊₁) if |xₙ₊₁-xₙ₋₁| < |xₙ₊₁-xₙ|.
+    if abs(fₙ) > abs(fₙ₋₁)
+        (xₙ, xₙ₋₁) = (xₙ₋₁, xₙ)
+        (fₙ, fₙ₋₁) = (fₙ₋₁, fₙ)
+    end
+
+    println("\nStart secant iteration.")
+    lₙ₋₁ = l₀ = abs(fₙ₋₁)
+    lₙ = abs(fₙ)
+    τ = max(τr_threshold * l₀, τa_threshold)
+    n_secant = 0
+    while lₙ > τ
+        # Calculate the quasi-Newton step.
+        dfdx = (fₙ-fₙ₋₁) / (xₙ-xₙ₋₁)
+        ∆x = -fₙ / dfdx
+
+        # Update the previous approximate solution.
+        xₙ₋₁ = xₙ
+        fₙ₋₁ = fₙ
+        lₙ₋₁ = lₙ
+
+        # Update the current approximate solution.
+        xₙ += ∆x
+        d = xₙ
+        println("d = $d:")
+        setD₀!(param, d)
+        solve_leq!(lsol, lvar, CC, param, m=m_anderson, τr=τr_anderson, τa=τa_anderson, maxit=maxit_anderson, verbose=verbose)
+        fₙ = lsol.a²[m]
+        lₙ = abs(fₙ)
+
+        println("After secant step $(n_secant+=1), mode $m has |aₗ²[$m]| = $lₙ.")
+
+        if lₙ > lₙ₋₁
+            println("|aₗ²[$m]| (= |f| of the secant method) increased.  Terminating the secant method.")
+
+            # We do not execute the following, because later when solving the nonlasing
+            # equation, param must contain the precalculated population inversion D for
+            # the lasing solution, which is for the latest d at this point.  Simply
+            # reverting d to the previous value will not revert D for this previous d.
+            # println("|aₗ²[$m]| (= |f| of the secant method) increased.  Revert to previous solution.")
+            # d = xₙ₋₁
+
+            break
+        end
+    end
+    println("Secant method terminated: d = $d")
+
+    # Verify if Im{ωₙₗ[m]} ≈ 0.
+    #
+    # We need to solve the nonlasing equation only for the mode m.  So, empty all the modes
+    # from the nonlasing solution first.
+    println("\nVerify if Im{ωₙₗ[$m]} ≈ 0.  First, empty nonlasing solution:")
+    for n = nlsol.m_active
+        push!(lsol, n, nlsol)
+        pop!(nlsol, n)
+    end
+
+    # Push the mode m to the nonlasing solution.
+    # Here, we don't use shutdown! because we want to push the lasing mode m as a guess
+    # for the nonlasing mode m even if it aₗ² > 0.  (shutdown! does not shut down such a
+    # mode.)  This is to solve the nonlasing equation and see if ωₙₗ[m] has a close-to-
+    # zero imaginary part.
+    println("\nThen, Add mode $m to nonlasing solution:")
+    push!(nlsol, m, lsol)
+    pop!(lsol, m)
+
+    # Solve the nonlasing equation for the mode m.
+    println()
+    solve_nleq!(nlsol, nlvar, CC, param, lvar.rvar.D, τr=τr_newton, τa=τa_newton, maxit=maxit_newton, verbose=verbose)
+    println("\nResult: Im{ωₙₗ[$m]} = $(imag(nlsol.ω[m]))")
+
+    return d
+end
+
+# Find the threshold of the mode with a given mode index using the bisection method.
 # Assume drng = (dl, dr) are both quite close to the threshold, and therefore the
 # initial guess solution lsol and nlsol are good guesses for both d = dl and dr.
-#
-# Consider implementing linear interpolation as well.
-function find_threshold!(lsol::LasingSol, lvar::LasingVar,
-                         nlsol::NonlasingSol, nlvar::NonlasingVar,
-                         CC::AbsMatNumber,
-                         param::SALTParam,
-                         m::Integer,  # index of mode whose threshold is to be calculated
-                         drng::Tuple{Real,Real},  # threshold is between drng[1] and drng[2]
-                         setD₀!::Function;  # setD₀!(param, d) sets pump strength param.D₀ corresponding to pump strength parameter d
-                         τr_bisect::Real=TR_BISECT,  # relative tolerance of bisection method
-                         τa_bisect::Real=TA_BISECT,  # absolute tolerance of bisection method
-                         maxit_bisect::Integer=MAXIT_BISECT,  # maximum number of bisection steps
-                         τr_newton::Real=TR_NEWTON,  # relative tolerance for Newton method to solve nonlasing equation
-                         τa_newton::Real=TA_NEWTON,  # absolute tolerance for Newton method to solve nonlasing equation
-                         maxit_newton::Integer=MAXIT_NEWTON,  # maximum number of Newton iteration steps
-                         m_anderson::Integer=M_ANDERSON,  # number of basis vectors to use in Anderson acceleration
-                         τr_anderson::Real=TR_ANDERSON,  # relative tolerance; consider using Base.rtoldefault(Float)
-                         τa_anderson::Real=TA_ANDERSON,  # absolute tolerance
-                         maxit_anderson::Integer=MAXIT_ANDERSON,  # maximum number of Anderson iteration steps
-                         verbose::Bool=true)
+function find_threshold_bisect!(lsol::LasingSol, lvar::LasingVar,
+                                nlsol::NonlasingSol, nlvar::NonlasingVar,
+                                CC::AbsMatNumber,
+                                param::SALTParam,
+                                m::Integer,  # index of mode whose threshold is to be calculated
+                                drng::Tuple{Real,Real},  # threshold is between drng[1] and drng[2]
+                                setD₀!::Function;  # setD₀!(param, d) sets pump strength param.D₀ corresponding to pump strength parameter d
+                                τr_threshold::Real=TR_THRESHOLD,  # relative tolerance of bisection method
+                                τa_threshold::Real=TA_THRESHOLD,  # absolute tolerance of bisection method
+                                maxit_threshold::Integer=MAXIT_THRESHOLD,  # maximum number of bisection steps
+                                τr_newton::Real=TR_NEWTON,  # relative tolerance for Newton method to solve nonlasing equation
+                                τa_newton::Real=TA_NEWTON,  # absolute tolerance for Newton method to solve nonlasing equation
+                                maxit_newton::Integer=MAXIT_NEWTON,  # maximum number of Newton iteration steps
+                                m_anderson::Integer=M_ANDERSON,  # number of basis vectors to use in Anderson acceleration
+                                τr_anderson::Real=TR_ANDERSON,  # relative tolerance; consider using Base.rtoldefault(Float)
+                                τa_anderson::Real=TA_ANDERSON,  # absolute tolerance
+                                maxit_anderson::Integer=MAXIT_ANDERSON,  # maximum number of Anderson iteration steps
+                                verbose::Bool=true)
+    check_conflict(lsol, nlsol)
     M = length(lsol)
     N = length(lsol.ψ[1])
 
@@ -322,6 +480,7 @@ function find_threshold!(lsol::LasingSol, lvar::LasingVar,
                 m_anderson=m_anderson, τr_anderson=τr_anderson, τa_anderson=τa_anderson, maxit_anderson=maxit_anderson,
                 verbose=verbose)
     lase_r = lsol.active[m]  # true if lasing at d = dr
+    lnl_r = islnl(lsol, nlsol, m)
 
     d = dl
     solve_salt!(lsol, lvar, nlsol, nlvar, CC, param, d, setD₀!,
@@ -329,6 +488,7 @@ function find_threshold!(lsol::LasingSol, lvar::LasingVar,
                 m_anderson=m_anderson, τr_anderson=τr_anderson, τa_anderson=τa_anderson, maxit_anderson=maxit_anderson,
                 verbose=verbose)
     lase_l = lsol.active[m]  # true if lasing at d = dl
+    lnl_l = islnl(lsol, nlsol, m)
 
     n_bisect = 0
     println("After bisection step $n_bisect, lasing status of mode $m: $lase_l at d = $dl; $lase_r at d = $dr.")
@@ -337,6 +497,12 @@ function find_threshold!(lsol::LasingSol, lvar::LasingVar,
     xor(lase_l, lase_r) || throw(ArgumentError("Must lase at one and only one of d = ($dl, $dr)."))
 
     while (n_bisect+=1) ≤ maxit_bisect && abs(dr-dl) > max(τr_bisect * abs(dr), τa_bisect)
+        if lnl_r && lnl_l
+            warn("Bisection terminates prematurely because mode $m is seen simultaneously lasing and nonlasing at both dl = $dl and dr = $dr.  "
+                * "Mode $m is too close to threshold for given solver tolerance.  Further bisection is meaningleses.  "
+                * "To get more accurate threshold, lower solver tolerance.")
+            break
+        end
         dc = 0.5(dl+dr)
         d = dc
         solve_salt!(lsol, lvar, nlsol, nlvar, CC, param, d, setD₀!,
@@ -344,13 +510,18 @@ function find_threshold!(lsol::LasingSol, lvar::LasingVar,
                     m_anderson=m_anderson, τr_anderson=τr_anderson, τa_anderson=τa_anderson, maxit_anderson=maxit_anderson,
                     verbose=true)
         lase_c = lsol.active[m]  # true if lasing at d = dc
+        lnl_c = islnl(lsol, nlsol, m)
 
         if lase_c == lase_l
+            println("Setting dl = $dc.")
             dl = dc
             lase_l = lase_c
+            lnl_l = lnl_c
         else
+            println("Setting dr = $dc.")
             dr = dc
             lase_r = lase_c
+            lnl_r = lnl_c
         end
         assert(xor(lase_l, lase_r))
 
@@ -359,3 +530,5 @@ function find_threshold!(lsol::LasingSol, lvar::LasingVar,
 
     return 0.5(dl+dr)
 end
+
+find_threshold! = find_threshold_secant!

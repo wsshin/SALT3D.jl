@@ -26,7 +26,8 @@ function anderson_salt!(lsol::LasingSol,
     lleq₀ = norm_leq(lsol, lvar, CC, param)
     # verbose && println(msgprefix * "Anderson acceleration:")
     verbose && println(msgprefix * "Initial residual norm: ‖leq₀‖ = $lleq₀")
-    lleq₀ ≤ τa && return k, lleq₀  # lsol.m_active = [] falls to this as well
+    lleq₀ ≤ τa && return k, lleq₀, lleq₀  # lsol.m_active = [] falls to this as well
+
     τ = max(τr*lleq₀, τa)
 
     x = lsol2rvec(lsol)
@@ -46,7 +47,7 @@ function anderson_salt!(lsol::LasingSol,
     if m == 0 # simple fixed-point iteration (no memory)
         for k = 1:maxit
             lleq = norm_leq(lsol, lvar, CC, param)
-            verbose && println(msgprefix * "k = $k: ‖leq‖ / ‖leq₀‖ = $(lleq/lleq₀)")
+            verbose && println(msgprefix * "k = $k: ‖leq‖/‖leq₀‖ = $(lleq/lleq₀)")
             lleq ≤ τ && break
             update_lsol!(lsol, lvar, CC, param)
         end
@@ -85,7 +86,7 @@ function anderson_salt!(lsol::LasingSol,
         # Then we know ∆xₖ₋₁ and ∆fₖ₋₁, which are needed for the Anderson acceleration.
         for k = 1:maxit
             lleq = norm_leq(lsol, lvar, CC, param)
-            verbose && println(msgprefix * "k = $k: ‖leq‖ / ‖leq₀‖ = $(lleq/lleq₀)")
+            verbose && println(msgprefix * "k = $k: ‖leq‖/‖leq₀‖ = $(lleq/lleq₀)")
             lleq ≤ τ && break
 
             # Evaluate g(xₖ).
@@ -135,9 +136,9 @@ function anderson_salt!(lsol::LasingSol,
 
     if k == maxit  # iteration terminated by consuming maxit steps
         lleq = norm_leq(lsol, lvar, CC, param)
-        verbose && println(msgprefix * "k = $k: ‖leq‖ / ‖leq₀‖ = $(lleq/lleq₀)")
-        println(); warn("Anderson reached maxit = $maxit and didn't converge.")
+        verbose && println(msgprefix * "k = $k: ‖leq‖/‖leq₀‖ = $(lleq/lleq₀)")
+        warn("Anderson reached maxit = $maxit and didn't converge.")
     end
 
-    return k, lleq
+    return k, lleq, lleq₀
 end
