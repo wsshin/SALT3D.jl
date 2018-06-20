@@ -121,25 +121,19 @@ init_nlvar!(nlvar::NonlasingVar, m::Integer, nlsol::NonlasingSol, D::AbsVecFloat
 # Unlike norm_leq, this norm_nleq takes the mode index m, because nonlasing mode equations
 # are uncoupled between nonlasing modes.  This asymmetry between norm_leq and norm_lneq may
 # need to be fixed because it makes tracking code difficult.
-function norm_nleq(m::Integer, nlsol::NonlasingSol, mvar::NonlasingModalVar)
+function norm_nleq(m::Integer, nlsol::NonlasingSol, mvar_vec::AbsVec{<:NonlasingModalVar})
+    mvar = mvar_vec[m]
+    mvar.inited || throw(ArgumentError("mvar is uninitialized: call init_nlvar!(...) first."))
+
     ψ = nlsol.ψ[m]
-    b = similar(ψ)
+    b = nlsol.vtemp
+
     linapply!(b, mvar.lsd, ψ)  # b = A * ψ
 
     return norm(b)  # 2-norm
 end
 
-function norm_nleq(m::Integer,
-                   nlsol::NonlasingSol,
-                   nlvar::NonlasingVar,
-                   D::AbsVecFloat,  # use param.D₀ (lsol.lvar.D) for calculation without (with) hole-burning term
-                   param::SALTParam)
-    # update_nlsol! needs to call init_nlvar! beforehand.  By calling init_nlvar! here, we
-    # force checking the norm before using update_nlsol!.
-    init_nlvar!(nlvar, m, nlsol, D, param)
-
-    return norm_nleq(m, nlsol, nlvar.mvar_vec[m])
-end
+norm_nleq(m::Integer, nlsol::NonlasingSol, nlvar::NonlasingVar) = norm_nleq(m, nlsol, nlvar.mvar_vec)
 
 
 # Unlike update_lsol!, this update_nlsol! takes the mode index m, because nonlasing mode
@@ -150,7 +144,7 @@ update_nlsol!(nlsol::NonlasingSol, m::Integer, nlvar::NonlasingVar) = update_nls
 function update_nlsol!(nlsol::NonlasingSol,
                        m::Integer,  # index of nonlasing mode of interest
                        mvar::NonlasingModalVar)  # must be already initialized
-    mvar.inited || throw(ArgumentError("mvar is uninitialized: call norm_nleq(...) first."))
+    mvar.inited || throw(ArgumentError("mvar is uninitialized: call init_nlvar!(...) first."))
 
     # Retrieve necessary variables for constructing the constraint.
     ψ = nlsol.ψ[m]

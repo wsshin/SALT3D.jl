@@ -305,27 +305,23 @@ function init_lvar!(lvar::LasingVar, lsol::LasingSol, param::SALTParam)
 end
 
 
-function norm_leq(lsol::LasingSol, mvar_vec::AbsVec{<:LasingModalVar})
+function norm_leq_impl(lsol::LasingSol, mvar_vec::AbsVec{<:LasingModalVar})
     leq² = 0.0
-    if length(lsol) ≠ 0
-        b = similar(lsol.ψ[1])
-        for m = lsol.m_active
-            lsd = mvar_vec[m].lsd
-            ψ = lsol.ψ[m]
-            linapply!(b, lsd, ψ)  # b = A * ψ
-            leq² = max(leq², sum(abs2,b))  # 2-norm for each mode, 1-norm between modes
-        end
+    b = lsol.vtemp
+    for m = lsol.m_active
+        lsd = mvar_vec[m].lsd
+        ψ = lsol.ψ[m]
+        linapply!(b, lsd, ψ)  # b = A * ψ
+        leq² = max(leq², sum(abs2,b))  # 2-norm for each mode, 1-norm between modes
     end
 
     return √leq²  # return 0.0 if lsol.m_active is empty
 end
 
 function norm_leq(lsol::LasingSol, lvar::LasingVar, param::SALTParam)
-    # Call init_lvar!, which is necessary for using update_lsol!, here in order to force
-    # checking the norm before using update_lsol!.
-    init_lvar!(lvar, lsol, param)
+    lvar.inited || throw(ArgumentError("lvar is uninitialized: call init_lvar!(...) first."))
 
-    return norm_leq(lsol, lvar.mvar_vec)
+    return norm_leq_impl(lsol, lvar.mvar_vec)
 end
 
 # Create the nth constraint equation on ∆ω and ∆a.
@@ -438,8 +434,8 @@ end
 
 # lvar must be already initialized by init_lvar! before starting the fixed-point iteration.
 function update_lsol!(lsol::LasingSol, lvar::LasingVar, param::SALTParam)
-    lvar.inited || throw(ArgumentError("lvar is uninitialized: call norm_leq(...) first."))
-    update_lsol!(lsol, lvar.∆lsol, lvar.mvar_vec, lvar.rvar, lvar.cst, param)
+    lvar.inited || throw(ArgumentError("lvar is uninitialized: call init_lvar!(...) first."))
+    update_lsol_impl!(lsol, lvar.∆lsol, lvar.mvar_vec, lvar.rvar, lvar.cst, param)
     lvar.inited = false
 
     return nothing
@@ -454,12 +450,12 @@ end
 # init_lvar! must be called before using this function to make lvar prepared.  However,
 # init_lvar! is not exported in order to force checking the norm by norm_leq to avoid
 # calling this function when the norm is small enough.
-function update_lsol!(lsol::LasingSol,
-                      ∆lsol::∆LasingSol,
-                      mvar_vec::AbsVec{<:LasingModalVar},  # must be already initialized
-                      rvar::LasingReducedVar,  # must be already initialized
-                      cst::LasingConstraint,
-                      param::SALTParam)
+function update_lsol_impl!(lsol::LasingSol,
+                           ∆lsol::∆LasingSol,
+                           mvar_vec::AbsVec{<:LasingModalVar},  # must be already initialized
+                           rvar::LasingReducedVar,  # must be already initialized
+                           cst::LasingConstraint,
+                           param::SALTParam)
     # Construct the constraint equation on ∆ω and ∆a.
     cst.A .= 0
     cst.b .= 0

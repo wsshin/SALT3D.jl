@@ -13,8 +13,8 @@ const TA_THRESHOLD = eps(Float)  # relative tolerance of bisection method
 const TR_THRESHOLD = sqrt(TA_THRESHOLD)  # relative tolerance of bisection method
 const MAXIT_THRESHOLD = 50  # maximum number of bisection steps
 
-# solve_leq! is just a new name of anderson_salt!.  norm_leq and update_lsol! are called
-# inside anderson_salt!.
+# solve_leq! is just a new name of anderson_salt!.  init_lval!, norm_leq, and update_lsol!
+# are called inside anderson_salt!.
 function solve_leq!(lsol, lvar, param; m=M_ANDERSON, τr=TR_ANDERSON, τa=TA_ANDERSON, maxit=MAXIT_ANDERSON, verbose=true)
     println("  Solve lasing eq. with modes m = $(lsol.m_active) where aₗ²[m=1:$(length(lsol))] = $(lsol.a²):")
 
@@ -54,17 +54,17 @@ function solve_nleq!(nlsol::NonlasingSol,
         # Newton method for nonlasing modes
         tic()
         k = 0
-        lnleq₀ = norm_nleq(m, nlsol, nlvar, D, param)
+        init_nlvar!(nlvar, m, nlsol, D, param)
+        lnleq₀ = norm_nleq(m, nlsol, nlvar)
         # verbose && println("  Initial residual norm: ‖nleq₀‖ = $lnleq₀")
 
+        τ = max(τr*lnleq₀, τa)
         lnleq = lnleq₀
-        if lnleq₀ > τa
-            τ = max(τr*lnleq₀, τa)
-            for k = 1:maxit
-                lnleq = norm_nleq(m, nlsol, nlvar, D, param)
-                lnleq ≤ τ && break
-                update_nlsol!(nlsol, m, nlvar)
-            end
+        for k = 0:maxit
+            lnleq ≤ τ && break
+            update_nlsol!(nlsol, m, nlvar)
+            init_nlvar!(nlvar, m, nlsol, D, param)
+            lnleq = norm_nleq(m, nlsol, nlvar)
         end
         t_newton = toq()
         # verbose && println("  mode $m: No. of Newton steps = $k, ‖nleq‖ = $lnleq")
