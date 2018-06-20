@@ -7,19 +7,47 @@
 export LasingSol, LasingVar
 export norm_leq, update_lsol!, fixedpt!
 
+# Below (and also in nonlasing.jl), many constructors take some arguments as templates, and
+# those template arguments are not directly set as fields: separate copies are created
+# (usually by `similar`) and set as fields.
+#
+# - An alternative would be to take parameters for creating those fields and create the
+# fields.  E.g., we could take the length and the element type of a vector, create a vector,
+# and set it as a field.  However, we are aiming to support many different types of vectors
+# (e.g., PETSc vector).  We cannot predict all the parameters needed for creating these
+# vectors.  By taking an actual instance of a vector in this case, we can support any types
+# of vectors.
+#
+# - Then, the next possibility would be to let the users to provide a copy, instead of
+# automatically generating a copy inside code.  I avoid taking this route for consistency in
+# regard to automatic type conversion inside constructors.  Suppose I create a custom type
+# named `MyType` containing `v::Vector{Float64}` as a field.  If I instantiate `MyType` by
+# giving a `vi::Vector{Int64}` as an argument, `vi` is automatically type-converted into a
+# Vector{Float64} and set to `v`.  Here, the resulting `v::Vector{Float64}` is a separate
+# copy from `vi::Vector{Int64}`.  On the other hand, if I instantiate `MyType` by giving a
+# `vf::Vector{Float64}` as an argument, a copy is not created and the `vf` itself is set to
+# `v`.  This inconsistency is confusing, because in one case changing the contents of the
+# outside vector `vi` does not affect the `MyType` instance, whereas in the other case it
+# does.  In order to avoid this inconsistency, I decide to always create a copy of a
+# template argument.  This way, no matter whether automatic type conversion occurs or not,
+# the stored field is a separate copy from the argument given to a constructor.
+
+
 # Solutions to the lasing equation.
 mutable struct LasingSol{VC<:AbsVecComplex}  # VC can be PETSc vector
     ω::VecFloat  # M real numbers: frequencies of modes (M = # of lasing modes)
     a²::VecFloat  # M real numbers: squared "amplitudes" of modes
     ψ::Vector{VC}  # M complex vectors: normalized modes
     iₐ::VecInt  # M integers: row indices where amplitudes are measured
+    vtemp::VC  # temporary storage for N complex numbers; note its contents can change at any point
     activated::VecBool  # activated[m] == true if mode m is just activated; used in simulate!
     active::VecBool  # active[m] == true if mode m is active (i.e., lasing)
     m_active::VecInt  # vector of active (i.e., lasing) mode indices; collection of m such that active[m] == true
     function LasingSol{VC}(ω::AbsVecReal,
                            a²::AbsVecReal,
                            ψ::AbsVec{<:AbsVecNumber},
-                           iₐ::AbsVecInteger) where {VC<:AbsVecComplex}
+                           iₐ::AbsVecInteger,
+                           vtemp::AbsVecNumber) where {VC<:AbsVecComplex}
         length(ω)==length(a²)==length(ψ)==length(iₐ) ||
             throw(ArgumentError("length(ω) = $(length(ω)), length(a²) = $(length(a²)),
                                  length(ψ) = $(length(ψ)), length(iₐ) = $(length(iₐ)) must be the same."))
@@ -33,16 +61,15 @@ mutable struct LasingSol{VC<:AbsVecComplex}  # VC can be PETSc vector
             end
         end
 
-        return new(ω, a², ψ, iₐ, fill(false,M), fill(false,M), VecInt(0))  # active[m]=false for all m: no mode is lasing
+        return new(ω, a², ψ, iₐ, vtemp, fill(false,M), fill(false,M), VecInt(0))  # active[m]=false for all m: no mode is lasing
     end
 end
-LasingSol(ω::AbsVecReal, a²::AbsVecReal, ψ::AbsVec{VC}, iₐ::AbsVecInteger) where {VC<:AbsVecComplex} =
-    LasingSol{VC}(ω, a², ψ, iₐ)
+LasingSol(ω::AbsVecReal, a²::AbsVecReal, ψ::AbsVec{VC}, iₐ::AbsVecInteger, vtemp::VC) where {VC<:AbsVecComplex} =
+    LasingSol{VC}(ω, a², ψ, iₐ, vtemp)
 
 # To do: check if the following works for vtemp of PETSc vector type.
-LasingSol(vtemp::AbsVec,  # template vector with N entries
-          M::Integer) =
-    LasingSol(zeros(M), zeros(M), [similar(vtemp,CFloat).=0 for m = 1:M], zeros(Int,M))
+LasingSol(vtemp::AbsVec, M::Integer) =  # vtemp has N entries
+    LasingSol(zeros(M), zeros(M), [similar(vtemp,CFloat).=0 for m = 1:M], zeros(Int,M), similar(vtemp,CFloat))
 LasingSol(N::Integer, M::Integer) = LasingSol(VecFloat(N), M)
 
 Base.length(lsol::LasingSol) = length(lsol.ψ)
@@ -80,8 +107,7 @@ end
     ∆LasingSol{VC}(∆ω, ∆a², ∆ψ, vtemp)
 
 # To do: check if the following works for vtemp of PETSc vector type.
-∆LasingSol(vtemp::AbsVec,  # template vector with N entries
-           M::Integer) =
+∆LasingSol(vtemp::AbsVec, M::Integer) =  # vtemp has N entries
     ∆LasingSol(VecFloat(M), VecFloat(M), [similar(vtemp,CFloat) for m = 1:M], similar(vtemp,CFloat))
 ∆LasingSol(N::Integer, M::Integer) = ∆LasingSol(VecFloat(N), M)
 
@@ -123,40 +149,36 @@ LasingReducedVar(D::AbsVecReal, D′::AbsVecReal, ∆D::AbsVecReal, ∇ₐ₂D::
 #     LasingReducedVar{VF}(D, D′, ∇ₐ₂D)
 
 # To do: check if the following works for vtemp of PETSc vector type.
-LasingReducedVar(vtemp::AbsVec,  # template vector with N entries
-                 M::Integer) =
+LasingReducedVar(vtemp::AbsVec, M::Integer) =  # vtemp has N entries
     LasingReducedVar(similar(vtemp,Float), similar(vtemp,Float), similar(vtemp,Float), [similar(vtemp,Float) for m = 1:M])
 LasingReducedVar(N::Integer, M::Integer) =  LasingReducedVar(VecFloat(N), M)
 
 
 # Lasing equation variables that are unique to each lasing mode
-mutable struct LasingModalVar{MC<:AbsMatComplex,VC<:AbsVecComplex}  # MC and VC can be PETSc matrix and vector
+mutable struct LasingModalVar{LSD<:LinearSolverData,VC<:AbsVecComplex}  # VC can be PETSc vector
     # Consider adding ε as a field, in case the user wants to solve the "linear" eigenvalue
     # equation for some reason.
-    A::MC
+    lsd::LSD
     ω²γψ::VC
     ∂f∂ω::VC
-    function LasingModalVar{MC,VC}(A::AbsMatNumber,  # dense A is automatically converted to sparse matrix if MC is sparse type
+    function LasingModalVar{LSD,VC}(lsd::LSD,
                                    ω²γψ::AbsVecNumber,
-                                   ∂f∂ω::AbsVecNumber) where {MC<:AbsMatComplex,VC<:AbsVecComplex}
+                                   ∂f∂ω::AbsVecNumber) where {LSD<:LinearSolverData,VC<:AbsVecComplex}
         length(ω²γψ)==length(∂f∂ω) ||
             throw(ArgumentError("length(ω²γψ) = $(length(ω²γψ)) and length(∂f∂ω) = $(length(∂f∂ω)) must be the same."))
         N = length(ω²γψ)
-        size(A) == (N,N) || throw(ArgumentError("Each entry of size(A) = $(size(A)) and length(ω²γψ) = $N must be the same."))
 
-        return new(A, ω²γψ, ∂f∂ω)
+        return new(lsd, ω²γψ, ∂f∂ω)
     end
 end
-LasingModalVar(A::MC, ω²γψ::VC, ∂f∂ω::VC) where {MC<:AbsMatComplex,VC<:AbsVecComplex} =
-    LasingModalVar{MC,VC}(A, ω²γψ, ∂f∂ω)
+LasingModalVar(lsd::LSD, ω²γψ::VC, ∂f∂ω::VC) where {LSD<:LinearSolverData,VC<:AbsVecComplex} =
+    LasingModalVar{LSD,VC}(lsd, ω²γψ, ∂f∂ω)
 
 # To do: check if the following works for vtemp of PETSc vector type.
-LasingModalVar(mtemp::AbsMat,  # template N×N matrix (e.g., sparse matrix with all nonzero locations already specified)
-               vtemp::AbsVec) =  # template vector with N entries
-    LasingModalVar(similar(mtemp,CFloat), similar(vtemp,CFloat), similar(vtemp,CFloat))
-LasingModalVar(mtemp::AbsMat) =
-    (N = size(mtemp)[1]; LasingModalVar(similar(mtemp,CFloat), VecComplex(N), VecComplex(N)))
-
+LasingModalVar(lsd_temp::LinearSolverData, vtemp::AbsVec) =  # vtemp has N entries
+    LasingModalVar(similar(lsd_temp), similar(vtemp,CFloat), similar(vtemp,CFloat))
+LasingModalVar(lsd_temp::LinearSolverData, N::Integer) =
+    LasingModalVar(similar(lsd_temp), VecComplex(N), VecComplex(N))
 
 mutable struct LasingConstraint
     A::MatFloat  # constraint matrix
@@ -202,17 +224,16 @@ end
 
 
 # Components necessary for fixed-point iteration
-mutable struct LasingVar{MC<:AbsMatComplex,VC<:AbsVecComplex,VF<:AbsVecFloat}
+mutable struct LasingVar{LSD<:LinearSolverData,VC<:AbsVecComplex,VF<:AbsVecFloat}
     ∆lsol::∆LasingSol{VC}
-    mvar_vec::Vector{LasingModalVar{MC,VC}}
+    mvar_vec::Vector{LasingModalVar{LSD,VC}}
     rvar::LasingReducedVar{VF}
     cst::LasingConstraint
     inited::Bool
 end
-LasingVar(mtemp::AbsMat, vtemp::AbsVec, M::Integer) =
-    LasingVar(∆LasingSol(vtemp, M), [LasingModalVar(mtemp, vtemp) for m = 1:M], LasingReducedVar(vtemp, M), LasingConstraint(M), false)
-LasingVar(mtemp::AbsMat, M::Integer) = (N = size(mtemp)[1]; LasingVar(mtemp, VecFloat(N), M))
-
+LasingVar(lsd_temp::LinearSolverData, vtemp::AbsVec, M::Integer) =
+    LasingVar(∆LasingSol(vtemp, M), [LasingModalVar(lsd_temp, vtemp) for m = 1:M], LasingReducedVar(vtemp, M), LasingConstraint(M), false)
+LasingVar(lsd_temp::LinearSolverData, N::Integer, M::Integer) = LasingVar(lsd_temp, VecFloat(N), M)
 
 function init_reduced_var!(rvar::LasingReducedVar, ∆lsol::∆LasingSol, lsol::LasingSol, param::SALTParam)
     hole_burning!(rvar.D′, lsol.a², lsol.ψ)  # temporarily store hole-burning term in D′
@@ -236,7 +257,6 @@ function init_modal_var!(mvar::LasingModalVar,
                          m::Integer,  # index of lasing mode
                          lsol::LasingSol,
                          rvar::LasingReducedVar,
-                         CC::AbsMatNumber,
                          param::SALTParam)
     isreal(lsol.ω[m]) || throw(ArgumentError("lsol.ω[$m] = $(lsol.ω[m]) must be real."))
     ω = real(lsol.ω[m])
@@ -248,8 +268,7 @@ function init_modal_var!(mvar::LasingModalVar,
     ε = mvar.∂f∂ω  # temporary storage for effective permitivity: εc + γ D
     ε .= param.εc .+ γ .* rvar.D
 
-    # Move A, rowA⁻¹ᵢₐ away.  These need to be used only
-    create_A!(mvar.A, CC, ω, ε)
+    init_lsd!(mvar.lsd, ω, ε)
     mvar.ω²γψ .= (ω^2*γ) .* lsol.ψ[m]
     mvar.∂f∂ω .= (2ω .* ε + (ω^2*γ′) .* rvar.D) .* lsol.ψ[m]  # derivative of lasing equation function w.r.t ω
 
@@ -269,7 +288,7 @@ function init_∆lsol!(∆lsol::∆LasingSol)
  end
 
 
-function init_lvar!(lvar::LasingVar, lsol::LasingSol, CC::AbsMatNumber, param::SALTParam)
+function init_lvar!(lvar::LasingVar, lsol::LasingSol, param::SALTParam)
     ∆lsol = lvar.∆lsol
     mvar_vec = lvar.mvar_vec
     rvar = lvar.rvar
@@ -277,7 +296,7 @@ function init_lvar!(lvar::LasingVar, lsol::LasingSol, CC::AbsMatNumber, param::S
     init_∆lsol!(∆lsol)  # make ∆lsol all zero
     init_reduced_var!(rvar, ∆lsol, lsol, param)
     for m = lsol.m_active
-        init_modal_var!(mvar_vec[m], m, lsol, rvar, CC, param)
+        init_modal_var!(mvar_vec[m], m, lsol, rvar, param)
     end
 
     lvar.inited = true
@@ -288,36 +307,26 @@ end
 
 function norm_leq(lsol::LasingSol, mvar_vec::AbsVec{<:LasingModalVar})
     leq² = 0.0
-    for m = lsol.m_active
-        A = mvar_vec[m].A
-        ψ = lsol.ψ[m]
-        leq² = max(leq², sum(abs2,A*ψ))  # 2-norm for each mode, 1-norm between modes
+    if length(lsol) ≠ 0
+        b = similar(lsol.ψ[1])
+        for m = lsol.m_active
+            lsd = mvar_vec[m].lsd
+            ψ = lsol.ψ[m]
+            linapply!(b, lsd, ψ)  # b = A * ψ
+            leq² = max(leq², sum(abs2,b))  # 2-norm for each mode, 1-norm between modes
+        end
     end
 
     return √leq²  # return 0.0 if lsol.m_active is empty
 end
 
-function norm_leq(lsol::LasingSol, lvar::LasingVar, CC::AbsMatNumber, param::SALTParam)
+function norm_leq(lsol::LasingSol, lvar::LasingVar, param::SALTParam)
     # Call init_lvar!, which is necessary for using update_lsol!, here in order to force
     # checking the norm before using update_lsol!.
-    init_lvar!(lvar, lsol, CC, param)
+    init_lvar!(lvar, lsol, param)
 
     return norm_leq(lsol, lvar.mvar_vec)
 end
-
-# To do: use an iterative solver inside this, and pass a storage for the output.  (We need
-# to change init_modal_var! accordingly.)
-function row_A⁻¹(iₐ::Integer,  # row index
-                 A::AbsMatNumber)  # matrix A
-    N = size(A)[1]
-    eᵢₐ = zeros(N)
-    eᵢₐ[iₐ] = 1
-    # info("‖A‖₁ = $(norm(A,1))")
-    rowA⁻¹ᵢₐ = A.' \ eᵢₐ  # R = A⁻ᵀ; rowA⁻¹ᵢₐ = (column form of iₐth row of A⁻¹) = (eᵢₐᵀ A⁻¹)ᵀ = A⁻ᵀ eᵢₐ
-
-    return rowA⁻¹ᵢₐ
-end
-
 
 # Create the nth constraint equation on ∆ω and ∆a.
 function set_constraint!(cst::LasingConstraint,
@@ -330,22 +339,30 @@ function set_constraint!(cst::LasingConstraint,
     ∆ψ = ∆lsol.∆ψ[m]
     iₐ = lsol.iₐ[m]
 
+    vtemp1 = lsol.vtemp
+    vtemp2 = ∆lsol.vtemp
+
+    N = length(ψ)
+
     # Retrieve necessary variables for constructing the constraint.
     ∆D = rvar.∆D
     ∇ₐ₂D = rvar.∇ₐ₂D
 
-    r = row_A⁻¹(iₐ, mvar.A)
+    # Calculate the iₐth row of A⁻¹ and keep it as a column vector
+    eᵢₐ = vtemp2
+    eᵢₐ .= 0
+    eᵢₐ[iₐ] = 1
+    r = vtemp1  # storage for row vector
+    linsolve_transpose!(r, mvar.lsd, eᵢₐ)
 
     ω²γψ = mvar.ω²γψ
     ∂f∂ω = mvar.∂f∂ω
-
     A = cst.A  # constraint right-hand-side matrix
     b = cst.b  # constraint right-hand-side vector
-    vtemp = ∆lsol.vtemp
 
     # Set the right-hand-side vector of the constraint.
-    vtemp .= ∆D.*ω²γψ
-    ζv = ψ[iₐ] - BLAS.dotu(r, vtemp)  # scalar; note negation because ζv is quantity on RHS
+    vtemp2 .= ∆D.*ω²γψ
+    ζv = ψ[iₐ] - BLAS.dotu(r, vtemp2)  # scalar; note negation because ζv is quantity on RHS
     # info("ψ[iₐ] = $(ψ[iₐ]), ‖ψ‖ = $(norm(ψ))")
     # ζv = ψ[iₐ]  # ∆D = 0
     b[2m-1] = real(ζv)
@@ -357,8 +374,8 @@ function set_constraint!(cst::LasingConstraint,
     A[2m,2m-1] = imag(ζω)
 
     for j = lsol.m_active
-        vtemp .= ∇ₐ₂D[j] .* ω²γψ  # this uses no allocations
-        ζa² = BLAS.dotu(r, vtemp)
+        vtemp2 .= ∇ₐ₂D[j] .* ω²γψ  # this uses no allocations
+        ζa² = BLAS.dotu(r, vtemp2)
         A[2m-1,2j] = real(ζa²)
         A[2m,2j] = imag(ζa²)
     end
@@ -404,7 +421,9 @@ function apply_∆solₘ!(lsol::LasingSol,
     # # ∆ψ[lsol.iₐ[m]] = 0
 
     # info("‖A‖₁ = $(norm(mvar.A,1)), ‖vtemp‖ = $(norm(vtemp))")
-    ψ .= mvar.A \ vtemp
+    linsolve!(ψ, mvar.lsd, vtemp)
+    # ψ .= mvar.A \ vtemp
+
     iₐ = lsol.iₐ[m]
     ψ ./= ψ[iₐ]
 
@@ -418,7 +437,7 @@ end
 
 
 # lvar must be already initialized by init_lvar! before starting the fixed-point iteration.
-function update_lsol!(lsol::LasingSol, lvar::LasingVar, CC::AbsMatNumber, param::SALTParam)
+function update_lsol!(lsol::LasingSol, lvar::LasingVar, param::SALTParam)
     lvar.inited || throw(ArgumentError("lvar is uninitialized: call norm_leq(...) first."))
     update_lsol!(lsol, lvar.∆lsol, lvar.mvar_vec, lvar.rvar, lvar.cst, param)
     lvar.inited = false
@@ -488,22 +507,3 @@ function lsol2rvec(lsol::LasingSol)
     # return CatView(ψr...)
     # return CatView(lsol.ω[lsol.m_active], lsol.a²[lsol.m_active])
 end
-
-
-# Notes on applying andersonaccel! to SALT:
-# - First, note that andersonaccel! takes g!(y,x) that updates y without changing x.  On the
-# other hand, our update_lsol! updates the solution in-place.  Therefore, we need to think
-# about how to write the fixed-point equation properly.
-# - Or, we could change andersonaccel! such that it takes g!(x) that updates x in-place.
-
-
-# Used with anderson_steven.jl in usage1d_slab_multimode_anderson_orig.jl.
-# function fixedpt!(y, x, lsol::LasingSol, lvar::LasingVar, CC::AbsMatNumber, param::SALTParam)
-#     rvec = lsol2rvec(lsol)
-#     # info("size(x) = $(size(x)), size(rvec) = $(size(rvec))")
-#     rvec .= x
-#
-#     init_lvar!(lvar, lsol, CC, param)
-#     update_lsol!(lsol, lvar, CC, param)
-#     y .= rvec
-# end

@@ -29,15 +29,4 @@ hole_burning!(hb, a², ψ)
 @test all(hb .> 1)
 @test hb ≈ 1 + abs2.(Ψ) * a²
 
-# Create A.
-Ce = create_curl(PRIM, Ngrid)
-Ch = create_curl(DUAL, Ngrid)
-CC = Ch*Ce
-
-D = D₀ ./ hb
-ε = εc + γ*D
-A = similar(CC, Complex128)
-create_A!(A, CC, ωₘ, ε)
-@test A ≈ CC - ωₘ^2 * spdiagm(ε)
-
 end  # @testset "salteq"

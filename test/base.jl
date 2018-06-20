@@ -1,4 +1,4 @@
-@testset "lasing" begin
+@testset "base" begin
 
 @testset "indmax, indmin" begin
     v = Float64[11, 13, 14, 10, 12]
@@ -17,4 +17,4 @@
 
 end  # @testset "indmax, indmin"
 
-end  # @testset "lasing"
+end  # @testset "base"

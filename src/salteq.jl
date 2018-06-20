@@ -109,18 +109,3 @@ function hole_burning!(hb::AbsVecFloat,  # output
 
     return nothing
 end
-
-
-# Create ∇×∇× - ω² (ε + γ(ω) D).
-function create_A!(A::AbsMatComplex,  # output; must have same nonzero entry pattern as CC
-                   CC::AbsMatNumber,  # curl of curl (∇×∇×)
-                   ω::Number,  # angular frequency
-                   ε::AbsVecNumber)  # effective ε
-    A .= CC  # initialize; works for sparse matrices with same nonzero entry pattern
-    # info("‖CC‖₁ = $(norm(CC,1)), ω = $ω, ‖ε‖ = $(norm(ε))")
-    for i = 1:length(ε)
-        A[i,i] -= ω^2 * ε[i]
-    end
-
-    return nothing
-end

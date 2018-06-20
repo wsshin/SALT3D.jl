@@ -10,12 +10,14 @@ mutable struct NonlasingSol{VC<:AbsVecComplex}  # VC can be PETSc vector
     ω::VecComplex  # M complex numbers: frequencies of modes (M = # of nonlasing modes)
     ψ::Vector{VC}  # M complex vectors: normalized modes
     iₐ::VecInt  # M integers: row indices where amplitudes are measured
+    vtemp::VC  # temporary storage for N complex numbers; note its contents can change at any point
     activated::VecBool  # activated[m] == true if mode m is just activated; used in simulate!
     active::VecBool  # active[m] is true if mode m is activeive (i.e., nonlasing)
     m_active::VecInt  # vector of activeive (i.e., nonlasing) mode indices; collection of m such that active[m] == true
     function NonlasingSol{VC}(ω::AbsVecNumber,
                               ψ::AbsVec{<:AbsVecNumber},
-                              iₐ::AbsVecInteger) where {VC<:AbsVecComplex}
+                              iₐ::AbsVecInteger,
+                              vtemp::AbsVecNumber) where {VC<:AbsVecComplex}
         # Test sizes.
         length(ω)==length(ψ)==length(iₐ) ||
             throw(ArgumentError("length(ω) = $(length(ω)), length(ψ) = $(length(ψ)),
@@ -30,22 +32,21 @@ mutable struct NonlasingSol{VC<:AbsVecComplex}  # VC can be PETSc vector
             end
         end
 
-        return new(ω, ψ, iₐ, fill(false,M), fill(true,M), VecInt(1:M))  # active[m]==true for all m: all modes are nonlasing
+        return new(ω, ψ, iₐ, vtemp, fill(false,M), fill(true,M), VecInt(1:M))  # active[m]==true for all m: all modes are nonlasing
     end
 end
-NonlasingSol(ω::AbsVecNumber, ψ::AbsVec{VC}, iₐ::AbsVecInteger) where {VC<:AbsVecComplex} =
-    NonlasingSol{VC}(ω, ψ, iₐ)
+NonlasingSol(ω::AbsVecNumber, ψ::AbsVec{VC}, iₐ::AbsVecInteger, vtemp::VC) where {VC<:AbsVecComplex} =
+    NonlasingSol{VC}(ω, ψ, iₐ, vtemp)
 NonlasingSol(ω::AbsVecNumber, Ψ::AbsMatComplex, iₐ::AbsVecInteger) =
-    (M = length(ω); NonlasingSol(ω, [Ψ[:,m] for m = 1:M], iₐ))
+    ((N,M) = size(Ψ); NonlasingSol(ω, [Ψ[:,m] for m = 1:M], iₐ, similar(Ψ,N)))
 
-NonlasingSol(ω::AbsVecNumber, ψ::AbsVec{<:AbsVecComplex}) = NonlasingSol(ω, ψ, indmax.(abs, ψ))
+NonlasingSol(ω::AbsVecNumber, ψ::AbsVec{<:AbsVecComplex}) = NonlasingSol(ω, ψ, indmax.(abs, ψ), similar(ψ[1]))
 NonlasingSol(ω::AbsVecNumber, Ψ::AbsMatComplex) = (M = length(ω); NonlasingSol(ω, [Ψ[:,m] for m = 1:M]))
 
 
 # To do: check if the following works for vtemp of PETSc vector type.
-NonlasingSol(vtemp::AbsVec,  # template vector with N entries
-             M::Integer) =
-    NonlasingSol(zeros(CFloat,M), [similar(vtemp,CFloat).=0 for m = 1:M], VecInt(M))
+NonlasingSol(vtemp::AbsVec, M::Integer) =  # vtemp has N entries
+    NonlasingSol(zeros(CFloat,M), [similar(vtemp,CFloat).=0 for m = 1:M], VecInt(M), similar(vtemp,CFloat))
 NonlasingSol(N::Integer, M::Integer) = NonlasingSol(VecFloat(N), M)
 
 Base.length(nlsol::NonlasingSol) = length(nlsol.ψ)
@@ -62,42 +63,37 @@ end
 # nonlasing modal var: γ, γ′, εeff, A
 
 # Nonlasing equation variables that are unique to each nonlasing mode
-mutable struct NonlasingModalVar{MC<:AbsMatComplex,VC<:AbsVecComplex}  # MC and VC can be PETSc matrix and vector
-    A::MC
+mutable struct NonlasingModalVar{LSD<:LinearSolverData,VC<:AbsVecComplex}  # VC can be PETSc matrix and vector
+    lsd::LinearSolverData
     ∂f∂ω::VC
     inited::Bool
-    function NonlasingModalVar{MC,VC}(A::AbsMatNumber,  # dense A is automatically converted to sparse matrix if MC is sparse type
-                                      ∂f∂ω::AbsVecNumber) where {MC<:AbsMatComplex,VC<:AbsVecComplex}
+    function NonlasingModalVar{LSD,VC}(lsd::LSD, ∂f∂ω::AbsVecNumber) where {LSD<:LinearSolverData,VC<:AbsVecComplex}
         N = length(∂f∂ω)
-        size(A) == (N,N) || throw(ArgumentError("Each entry of size(A) = $(size(A)) and length∂f∂ω) = $N must be the same."))
+        size(lsd) == (N,N) || throw(ArgumentError("Each entry of size(lsd) = $(size(lsd)) and length∂f∂ω) = $N must be the same."))
 
-        return new(A, ∂f∂ω, false)
+        return new(lsd, ∂f∂ω, false)
     end
 end
-NonlasingModalVar(A::MC, ∂f∂ω::VC) where {MC<:AbsMatComplex,VC<:AbsVecComplex} =
-    NonlasingModalVar{MC,VC}(A, ∂f∂ω)
+NonlasingModalVar(lsd::LSD, ∂f∂ω::VC) where {LSD<:LinearSolverData,VC<:AbsVecComplex} =
+    NonlasingModalVar{LSD,VC}(lsd, ∂f∂ω)
 
 # To do: check if the following works for vtemp of PETSc vector type.
-NonlasingModalVar(mtemp::AbsMat,  # template N×N matrix (e.g., sparse matrix with all nonzero locations already specified)
-                  vtemp::AbsVec) =  # template vector with N entries
-    NonlasingModalVar(similar(mtemp,CFloat), similar(vtemp,CFloat))
-NonlasingModalVar(mtemp::AbsMat) =
-    (N = size(mtemp)[1]; NonlasingModalVar(similar(mtemp,CFloat), VecComplex(N), VecComplex(N)))
+NonlasingModalVar(lsd_temp::LinearSolverData, vtemp::AbsVec) =   # vtemp has N entries
+    NonlasingModalVar(similar(lsd_temp), similar(vtemp,CFloat))
 
 
 # Collection of nonlasing equation variables
-mutable struct NonlasingVar{MC<:AbsMatComplex,VC<:AbsVecComplex}
-    mvar_vec::Vector{NonlasingModalVar{MC,VC}}
+mutable struct NonlasingVar{LSD<:LinearSolverData,VC<:AbsVecComplex}
+    mvar_vec::Vector{NonlasingModalVar{LSD,VC}}
 end
-NonlasingVar(mtemp::AbsMat, vtemp::AbsVec, M::Integer) = NonlasingVar([NonlasingModalVar(mtemp, vtemp) for m = 1:M])
-NonlasingVar(mtemp::AbsMat, M::Integer) = (N = size(mtemp)[1]; NonlasingVar(mtemp, VecFloat(N), M))
+NonlasingVar(lsd_temp::LinearSolverData, vtemp::AbsVec, M::Integer) = NonlasingVar([NonlasingModalVar(lsd_temp, vtemp) for m = 1:M])
+NonlasingVar(lsd_temp::LinearSolverData, N::Integer, M::Integer) = NonlasingVar(lsd_temp, VecFloat(N), M)
 
 
 function init_modal_var!(mvar::NonlasingModalVar,
                          m::Integer,  # index of lasing mode
                          nlsol::NonlasingSol,
                          D::AbsVecFloat,  # population inversion
-                         CC::AbsMatNumber,
                          param::SALTParam)
     ω = nlsol.ω[m]
     ψ = nlsol.ψ[m]
@@ -110,7 +106,7 @@ function init_modal_var!(mvar::NonlasingModalVar,
     ε .= param.εc .+ γ .* D
     # info("maximum(D) = $(maximum(D)), maximum(|εc|) = $(maximum(abs(param.εc)))")
 
-    create_A!(mvar.A, CC, ω, ε)
+    init_lsd!(mvar.lsd, ω, ε)
     mvar.∂f∂ω .= (2ω .* param.εc + (2ω*γ + ω^2*γ′) .* D) .* ψ  # derivative of nonlasing equation function w.r.t. ω
 
     # Mark mvar as initialized.
@@ -119,27 +115,28 @@ function init_modal_var!(mvar::NonlasingModalVar,
     return nothing
 end
 
-init_nlvar!(nlvar::NonlasingVar, m::Integer, nlsol::NonlasingSol, D::AbsVecFloat, CC::AbsMatNumber, param::SALTParam) =
-    init_modal_var!(nlvar.mvar_vec[m], m, nlsol, D, CC, param)
+init_nlvar!(nlvar::NonlasingVar, m::Integer, nlsol::NonlasingSol, D::AbsVecFloat, param::SALTParam) =
+    init_modal_var!(nlvar.mvar_vec[m], m, nlsol, D, param)
 
 # Unlike norm_leq, this norm_nleq takes the mode index m, because nonlasing mode equations
 # are uncoupled between nonlasing modes.  This asymmetry between norm_leq and norm_lneq may
 # need to be fixed because it makes tracking code difficult.
 function norm_nleq(m::Integer, nlsol::NonlasingSol, mvar::NonlasingModalVar)
-    A = mvar.A
     ψ = nlsol.ψ[m]
-    return norm(A*ψ)  # 2-norm
+    b = similar(ψ)
+    linapply!(b, mvar.lsd, ψ)  # b = A * ψ
+
+    return norm(b)  # 2-norm
 end
 
 function norm_nleq(m::Integer,
                    nlsol::NonlasingSol,
                    nlvar::NonlasingVar,
                    D::AbsVecFloat,  # use param.D₀ (lsol.lvar.D) for calculation without (with) hole-burning term
-                   CC::AbsMatNumber,
                    param::SALTParam)
     # update_nlsol! needs to call init_nlvar! beforehand.  By calling init_nlvar! here, we
     # force checking the norm before using update_nlsol!.
-    init_nlvar!(nlvar, m, nlsol, D, CC, param)
+    init_nlvar!(nlvar, m, nlsol, D, param)
 
     return norm_nleq(m, nlsol, nlvar.mvar_vec[m])
 end
@@ -161,7 +158,8 @@ function update_nlsol!(nlsol::NonlasingSol,
     ψᵢₐold = ψ[iₐ]
 
     ∂f∂ω = mvar.∂f∂ω
-    v = mvar.A \ ∂f∂ω
+    v = nlsol.vtemp
+    linsolve!(v, mvar.lsd, ∂f∂ω)
 
     ∆ω = ψ[iₐ] / v[iₐ]
     nlsol.ω[m] += ∆ω
