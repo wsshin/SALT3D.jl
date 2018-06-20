@@ -1,5 +1,3 @@
-export turnon!, shutdown!, check_conflict
-
 # Nonlasing -> Lasing: take the mth nonlasing mode and use it to set the guess information
 # about the mth lasing mode.
 function Base.push!(lsol::LasingSol, m::Integer, nlsol::NonlasingSol, msgprefix::String="  ")

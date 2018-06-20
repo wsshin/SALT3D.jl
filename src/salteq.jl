@@ -1,7 +1,7 @@
 # Define variables used throughout the package and functions to initialize them.
 
 export SALTParam
-export gain, gain′, hole_burning!, create_A!
+export gain, hole_burning!
 
 # Below, allow vectors and matrices to be PETSc ones if their sizes are 3×(# of grid points).
 # If their sizes are the number of modes, keep them Julia vectors.

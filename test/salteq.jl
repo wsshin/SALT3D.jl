@@ -21,7 +21,7 @@ a² = rand(M)
 ψ = [Ψ[:,j] for j = 1:M]
 
 γ = gain(ωₘ, ωₐ, γ⟂)
-γ′ = gain′(ωₘ, ωₐ, γ⟂)
+γ′ = SALTBase.gain′(ωₘ, ωₐ, γ⟂)
 @test γ′ ≈ -γ^2 / γ⟂
 
 hb = Vector{Float64}(N)

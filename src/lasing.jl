@@ -5,7 +5,6 @@
 # directly without calculating ∆ψ.
 
 export LasingSol, LasingVar
-export norm_leq, update_lsol!, fixedpt!
 
 # Below (and also in nonlasing.jl), many constructors take some arguments as templates, and
 # those template arguments are not directly set as fields: separate copies are created

@@ -1,5 +1,3 @@
-export anderson_salt!
-
 # To do: pass the storages f, ∆X, ∆F, Q, β.  Also, think about ways to reduce this memory.
 
 # Solve the fixed-point equation g(x) = x to given relative and absolute tolerances,

@@ -3,7 +3,6 @@
 # index.
 
 export NonlasingSol, NonlasingVar
-export norm_nleq, update_nlsol!
 
 # Solutions to the nonlasing equation.
 mutable struct NonlasingSol{VC<:AbsVecComplex}  # VC can be PETSc vector

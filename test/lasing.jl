@@ -60,7 +60,7 @@ mvar = SALTBase.LasingModalVar(DefaultLSD(), N)
 SALTBase.init_modal_var!(mvar, m, sol, rvar, param)
 
 γ = gain(ωₘ, ωₐ, γ⟂)
-γ′ = gain′(ωₘ, ωₐ, γ⟂)
+γ′ = SALTBase.gain′(ωₘ, ωₐ, γ⟂)
 ε = εc + γ*D
 @testset "modal variables" begin
     @test mvar.ω²γψ ≈ (ωₘ^2 * γ) .* ψ[m]
