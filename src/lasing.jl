@@ -235,10 +235,11 @@ LasingVar(lsd_temp::LinearSolverData, vtemp::AbsVec, M::Integer) =
 LasingVar(lsd_temp::LinearSolverData, N::Integer, M::Integer) = LasingVar(lsd_temp, VecFloat(N), M)
 
 function init_reduced_var!(rvar::LasingReducedVar, ∆lsol::∆LasingSol, lsol::LasingSol, param::SALTParam)
-    hole_burning!(rvar.D′, lsol.a², lsol.ψ)  # temporarily store hole-burning term in D′
+    hb = lsol.vtemp  # temporary storage for hole-burning term
+    hole_burning!(hb, lsol.a², lsol.ψ)
 
-    rvar.D .= param.D₀ ./ rvar.D′  # D = D₀ / (1 + ∑a²|ψ|²)
-    rvar.D′ .= -param.D₀ ./ abs2.(rvar.D′)  # D′(∑a²|ψ|²) = -D₀ / (1+∑a²|ψ|²)²
+    rvar.D .= param.D₀ ./ hb  # D = D₀ / (1 + ∑a²|ψ|²)
+    rvar.D′ .= -param.D₀ ./ abs2.(hb)  # D′(∑a²|ψ|²) = -D₀ / (1+∑a²|ψ|²)²
 
     ∆popinv!(rvar.∆D, rvar.D′, ∆lsol, lsol)  # comment this out when ∆ψ_old = 0 (so that ∆D = 0)
     ∇ₐ₂popinv!(rvar.∇ₐ₂D, rvar.D′, lsol)
@@ -263,8 +264,7 @@ function init_modal_var!(mvar::LasingModalVar,
     γ = gain(ω, param.ωₐ, param.γ⟂)
     γ′ = gain′(ω, param.ωₐ, param.γ⟂)
 
-    # Below, avoid allocations and use preallocated arrays in mvar.
-    ε = mvar.∂f∂ω  # temporary storage for effective permitivity: εc + γ D
+    ε = lsol.vtemp  # temporary storage for effective permitivity: εc + γ D
     ε .= param.εc .+ γ .* rvar.D
 
     init_lsd!(mvar.lsd, ω, ε)
@@ -402,7 +402,7 @@ function apply_∆solₘ!(lsol::LasingSol,
     ψ = lsol.ψ[m]
 
     # Calculate the vector to feed to A⁻¹.
-    vtemp = ∆lsol.vtemp
+    vtemp = lsol.vtemp
     vtemp .= (∆D .* ω²γψ) .+ (∆ω .* ∂f∂ω)
     # vtemp .= (∆ω .* ∂f∂ω)  # ∆D = 0
     for j = lsol.m_active

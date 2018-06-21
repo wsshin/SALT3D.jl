@@ -95,7 +95,7 @@ gain′(ω::Number, ωₐ::Number, γ⟂::Number) = -γ⟂ / (ω - ωₐ + im * 
 
 
 # Evaluate the hole-burning term + 1 = 1 + ∑a²|ψ|².
-function hole_burning!(hb::AbsVecFloat,  # output
+function hole_burning!(hb::AbsVecNumber,  # output
                        a²::AbsVecReal,  # vector of squared amplitudes of unnormalized eigenmodes
                        ψ::AbsVec{<:AbsVecNumber})  # vector of normalized eigenmodes
     hb .= 1  # initialize

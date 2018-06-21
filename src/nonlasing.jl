@@ -101,7 +101,7 @@ function init_modal_var!(mvar::NonlasingModalVar,
     γ′ = gain′(ω, param.ωₐ, param.γ⟂)
 
     # Below, avoid allocations and use preallocated arrays in mvar.
-    ε = mvar.∂f∂ω  # temporary storage for effective permitivity: εc + γ D
+    ε = nlsol.vtemp  # temporary storage for effective permitivity: εc + γ D
     ε .= param.εc .+ γ .* D
     # info("maximum(D) = $(maximum(D)), maximum(|εc|) = $(maximum(abs(param.εc)))")
 
