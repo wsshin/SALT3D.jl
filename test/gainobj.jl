@@ -19,7 +19,7 @@ N = SVector(4,4,4)
 
 D₀ = zeros(3*prod(N))
 d = 1.0
-assign_gainobj!(D₀, gobj_vec, d, N, l)
+assign_pumpstr!(D₀, gobj_vec, d, N, l)
 
 # Constrcut the expected D₀.
 D₀exp = zeros(3, N...)

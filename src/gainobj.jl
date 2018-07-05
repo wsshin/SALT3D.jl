@@ -1,5 +1,5 @@
 export GainObject
-export assign_gainobj!
+export assign_pumpstr!
 
 # GainObject has
 # - Shape
@@ -24,8 +24,8 @@ GainObject(shape::S, D₀fun::F) where {K,S<:Shape{K},F<:Function} = GainObject{
 GainObject(shape::Shape) = GainObject(shape, d::Real->d)
 
 
-# Assign the gain specified by gain objects to an array.
-function assign_gainobj!(D₀::AbsVecReal,  # output vector to write on (reshaped into array of size 3×N, such that D₀[k,x,y,z] is D₀ multiplied to Eₖ[x,y,z])
+# Assign the pump strength specified by gain objects to an array.
+function assign_pumpstr!(D₀::AbsVecReal,  # output vector to write on (reshaped into array of size 3×N, such that D₀[k,x,y,z] is D₀ multiplied to Eₖ[x,y,z])
                          gobj_vec::AbsVec{<:GainObject{3}},  # vector of gain objects; later objects overwrite earlier objects
                          d::Real,  # pump parameter at which D₀ is evaluated
                          N::SVector{3,Int},  # size of output 3D array
