@@ -35,7 +35,7 @@ function assign_pumpstr!(D₀::AbsVecReal,  # output vector to write on (reshape
     gt_cmp₀ = SVector(gt, gt, gt)
     for nw = nXYZ
         gt_cmp = broadcast((k,w,g)->(k==w ? alter(g) : g), nXYZ, nw, gt_cmp₀)
-        lcmp = t_ind(l,gt_cmp)
+        lcmp = MaxwellFDM.t_ind(l,gt_cmp)  # this line depends on MaxwellFDM, so this code should be removed from SALTBase.jl and moved to MaxwellSALT.jl
         D₀cmp = @view D₀array[nw,:,:,:]
         for gobj = gobj_vec
             shape = gobj.shape
