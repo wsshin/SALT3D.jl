@@ -341,6 +341,7 @@ function set_constraint!(cst::LasingConstraint,
 
     # Retrieve necessary variables for constructing the constraint.
     ∆D = rvar.∆D
+    # info("‖∆D‖ = $(norm(∆D))")  # must be 0 for single-loop algorithm
     ∇ₐ₂D = rvar.∇ₐ₂D
 
     # Calculate the iₐth row of A⁻¹ and keep it as a column vector
@@ -349,6 +350,7 @@ function set_constraint!(cst::LasingConstraint,
     eᵢₐ[iₐ] = 1
     r = vtemp1  # storage for row vector
     linsolve_transpose!(r, mvar.lsd, eᵢₐ)
+    info("‖r‖ = $(norm(r))")
 
     ω²γψ = mvar.ω²γψ
     ∂f∂ω = mvar.∂f∂ω
@@ -358,8 +360,9 @@ function set_constraint!(cst::LasingConstraint,
     # Set the right-hand-side vector of the constraint.
     vtemp2 .= ∆D.*ω²γψ  # must be 0 for single-loop algorithm
     ζv = ψ[iₐ] - BLAS.dotu(r, vtemp2)  # scalar; note negation because ζv is quantity on RHS
-    # info("ψ[iₐ] = $(ψ[iₐ]), ‖ψ‖ = $(norm(ψ))")
-    # ζv = ψ[iₐ]  # ∆D = 0
+    info("ψ[iₐ] = $(ψ[iₐ]), ‖ψ‖ = $(norm(ψ))")
+    # ζv = ψ[iₐ]  # because ∆D = 0
+    # ζv = 1.0 + 0.0im  # because ∆D = 0 and ψ[iₐ] = 1
     b[2m-1] = real(ζv)
     b[2m] = imag(ζv)
 
@@ -389,6 +392,7 @@ function apply_∆solₘ!(lsol::LasingSol,
                       rvar::LasingReducedVar)
     # Retrieve necessary variables for constructing the constraint.
     ∆D = rvar.∆D
+    # info("‖∆D‖ = $(norm(∆D))")  # must be 0 for single-loop algorithm
     ∇ₐ₂D = rvar.∇ₐ₂D
 
     ω²γψ = mvar.ω²γψ
