@@ -247,7 +247,7 @@ function simulate!(lsol::LasingSol, lvar::LasingVar,
     nAA = zeros(Int, nout)  # nummber of Anderson acceleration steps
     tAA = zeros(nout)  # time taken for Anderson acceleration
 
-    println("\nStart simulation.")
+    println("\nStart SALT simulation.")
     cout = 1  # index of doutvec
     for d = dvec
         n_anderson, t_anderson =

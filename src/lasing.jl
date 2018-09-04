@@ -35,7 +35,7 @@ export LasingSol, LasingVar
 # Solutions to the lasing equation.
 mutable struct LasingSol{VC<:AbsVecComplex}  # VC can be PETSc vector
     ω::VecFloat  # M real numbers: frequencies of modes (M = # of lasing modes)
-    a²::VecFloat  # M real numbers: squared "amplitudes" of modes
+    a²::VecFloat  # M real numbers: squared "amplitudes" of modes inside hole-burning term; this includes γ(ω)² factor
     ψ::Vector{VC}  # M complex vectors: normalized modes
     iₐ::VecInt  # M integers: row indices where amplitudes are measured
     vtemp::VC  # temporary storage for N complex numbers; note its contents can change at any point
@@ -356,7 +356,7 @@ function set_constraint!(cst::LasingConstraint,
     b = cst.b  # constraint right-hand-side vector
 
     # Set the right-hand-side vector of the constraint.
-    vtemp2 .= ∆D.*ω²γψ
+    vtemp2 .= ∆D.*ω²γψ  # must be 0 for single-loop algorithm
     ζv = ψ[iₐ] - BLAS.dotu(r, vtemp2)  # scalar; note negation because ζv is quantity on RHS
     # info("ψ[iₐ] = $(ψ[iₐ]), ‖ψ‖ = $(norm(ψ))")
     # ζv = ψ[iₐ]  # ∆D = 0
@@ -404,7 +404,7 @@ function apply_∆solₘ!(lsol::LasingSol,
     # Calculate the vector to feed to A⁻¹.
     vtemp = lsol.vtemp
     vtemp .= (∆D .* ω²γψ) .+ (∆ω .* ∂f∂ω)
-    # vtemp .= (∆ω .* ∂f∂ω)  # ∆D = 0
+    # vtemp .= (∆ω .* ∂f∂ω)  # because ∆D = 0
     for j = lsol.m_active
         # info("‖∇ₐ₂D[$j]‖ = $(norm(∇ₐ₂D[j]))")
         vtemp .+= ∆a²[j] .* (∇ₐ₂D[j] .* ω²γψ)
@@ -419,6 +419,7 @@ function apply_∆solₘ!(lsol::LasingSol,
     linsolve!(ψ, mvar.lsd, vtemp)
     # ψ .= mvar.A \ vtemp
 
+    # Normalized ψ just in case ψ[iₐ] ≠ 1.  (Do we need to unnormalize a²?)
     iₐ = lsol.iₐ[m]
     ψ ./= ψ[iₐ]
 
