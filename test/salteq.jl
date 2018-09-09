@@ -1,5 +1,3 @@
-using MaxwellFDM
-
 @testset "salteq" begin
 
 # Create a system.
