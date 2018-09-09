@@ -1,6 +1,6 @@
 module SALTBase
 
-using MaxwellFDM, GeometryPrimitives, CatViews, StaticArrays
+using CatViews, StaticArrays
 using LinearAlgebra
 using Printf: @printf
 
@@ -58,7 +58,6 @@ include("base.jl")
 include("salteq.jl")
 include("lasing.jl")
 include("nonlasing.jl")
-include("gainobj.jl")
 include("anderson.jl")
 include("switching.jl")
 include("simulation.jl")
