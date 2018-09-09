@@ -6,7 +6,7 @@ using Printf: @printf
 
 export LinearSolverData
 
-# package code goes here
+# Below, use Int instead of Int64 for compatibility with 32-bit systems (e.g., x86 in appveyor.yml)
 const Float = typeof(0.0)  # use Float = Float128 for quadruple precision in the future
 const CFloat = Complex{Float}
 
