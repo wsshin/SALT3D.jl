@@ -1,5 +1,5 @@
 using SALTBase
-using Base.Test
+using Test
 
 # Define a concrete subtype of LinearSolverData for the test purspose.
 struct DefaultLSD <: LinearSolverData end

@@ -1,6 +1,9 @@
 module SALTBase
 
 using MaxwellFDM, GeometryPrimitives, CatViews, StaticArrays
+using LinearAlgebra
+using Printf: @printf
+
 export LinearSolverData
 
 # package code goes here

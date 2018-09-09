@@ -25,16 +25,16 @@ assign_pumpstr!(D₀, gobj_vec, d, N, l)
 D₀exp = zeros(3, N...)
 
 # x-components
-D₀exp[1, 2, 2:3, 2:3] = -1.0  # gbox_n
-D₀exp[1, 3, 3:4, 3:4] = 1.0  # gbox_p
+D₀exp[1, 2, 2:3, 2:3] .= -1.0  # gbox_n
+D₀exp[1, 3, 3:4, 3:4] .= 1.0  # gbox_p
 
 # y-components
-D₀exp[2, 2:3, 2, 2:3] = -1.0  # gbox_n
-D₀exp[2, 3:4, 3, 3:4] = 1.0  # gbox_p
+D₀exp[2, 2:3, 2, 2:3] .= -1.0  # gbox_n
+D₀exp[2, 3:4, 3, 3:4] .= 1.0  # gbox_p
 
 # z-components
-D₀exp[3, 2:3, 2:3, 2] = -1.0  # gbox_n
-D₀exp[3, 3:4, 3:4, 3] = 1.0  # gbox_p
+D₀exp[3, 2:3, 2:3, 2] .= -1.0  # gbox_n
+D₀exp[3, 3:4, 3:4, 3] .= 1.0  # gbox_p
 
 @test D₀exp[:] == D₀
 

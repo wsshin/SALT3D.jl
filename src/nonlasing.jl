@@ -39,18 +39,18 @@ NonlasingSol(ω::AbsVecNumber, ψ::AbsVec{VC}, iₐ::AbsVecInteger, vtemp::VC) w
 NonlasingSol(ω::AbsVecNumber, Ψ::AbsMatComplex, iₐ::AbsVecInteger) =
     ((N,M) = size(Ψ); NonlasingSol(ω, [Ψ[:,m] for m = 1:M], iₐ, similar(Ψ,N)))
 
-NonlasingSol(ω::AbsVecNumber, ψ::AbsVec{<:AbsVecComplex}) = NonlasingSol(ω, ψ, indmax.(abs, ψ), similar(ψ[1]))
+NonlasingSol(ω::AbsVecNumber, ψ::AbsVec{<:AbsVecComplex}) = NonlasingSol(ω, ψ, argmax.(abs, ψ), similar(ψ[1]))
 NonlasingSol(ω::AbsVecNumber, Ψ::AbsMatComplex) = (M = length(ω); NonlasingSol(ω, [Ψ[:,m] for m = 1:M]))
 
 
 # To do: check if the following works for vtemp of PETSc vector type.
 NonlasingSol(vtemp::AbsVec, M::Integer) =  # vtemp has N entries
     NonlasingSol(zeros(CFloat,M), [similar(vtemp,CFloat).=0 for m = 1:M], VecInt(M), similar(vtemp,CFloat))
-NonlasingSol(N::Integer, M::Integer) = NonlasingSol(VecFloat(N), M)
+NonlasingSol(N::Integer, M::Integer) = NonlasingSol(VecFloat(undef,N), M)
 
 Base.length(nlsol::NonlasingSol) = length(nlsol.ψ)
 
-function Base.normalize!(nlsol::NonlasingSol)
+function LinearAlgebra.normalize!(nlsol::NonlasingSol)
     for m = nlsol.m_active
         ψ = nlsol.ψ[m]
         iₐ = nlsol.iₐ[m]
@@ -86,7 +86,7 @@ mutable struct NonlasingVar{LSD<:LinearSolverData,VC<:AbsVecComplex}
     mvar_vec::Vector{NonlasingModalVar{LSD,VC}}
 end
 NonlasingVar(lsd_temp::LinearSolverData, vtemp::AbsVec, M::Integer) = NonlasingVar([NonlasingModalVar(lsd_temp, vtemp) for m = 1:M])
-NonlasingVar(lsd_temp::LinearSolverData, N::Integer, M::Integer) = NonlasingVar(lsd_temp, VecFloat(N), M)
+NonlasingVar(lsd_temp::LinearSolverData, N::Integer, M::Integer) = NonlasingVar(lsd_temp, VecFloat(undef,N), M)
 
 
 function init_modal_var!(mvar::NonlasingModalVar,
@@ -97,13 +97,13 @@ function init_modal_var!(mvar::NonlasingModalVar,
     ω = nlsol.ω[m]
     ψ = nlsol.ψ[m]
 
-    γ = gain(ω, param.ωₐ, param.γ⟂)
-    γ′ = gain′(ω, param.ωₐ, param.γ⟂)
+    γ = gain(ω, param.ωₐ, param.γperp)
+    γ′ = gain′(ω, param.ωₐ, param.γperp)
 
     # Below, avoid allocations and use preallocated arrays in mvar.
     ε = nlsol.vtemp  # temporary storage for effective permitivity: εc + γ D
     ε .= param.εc .+ γ .* D
-    # info("maximum(D) = $(maximum(D)), maximum(|εc|) = $(maximum(abs(param.εc)))")
+    # @info "maximum(D) = $(maximum(D)), maximum(|εc|) = $(maximum(abs.(param.εc)))"
 
     init_lsd!(mvar.lsd, ω, ε)
     mvar.∂f∂ω .= (2ω .* param.εc + (2ω*γ + ω^2*γ′) .* D) .* ψ  # derivative of nonlasing equation function w.r.t. ω
@@ -158,8 +158,8 @@ function update_nlsol!(nlsol::NonlasingSol,
     nlsol.ω[m] += ∆ω
     ψ .= ∆ω .* v
 
-    # info("|∆ψ[iₐ]| = $(abs(ψ[iₐ] - ψᵢₐold))")
-    assert(ψ[iₐ] ≈ ψᵢₐold)
+    # @info "|∆ψ[iₐ]| = $(abs(ψ[iₐ] - ψᵢₐold))"
+    @assert ψ[iₐ] ≈ ψᵢₐold
     ψ ./= ψ[iₐ]
 
     # Mark mvar uninitialized for the update solution.

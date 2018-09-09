@@ -1,7 +1,7 @@
 # Nonlasing -> Lasing: take the mth nonlasing mode and use it to set the guess information
 # about the mth lasing mode.
 function Base.push!(lsol::LasingSol, m::Integer, nlsol::NonlasingSol, msgprefix::String="  ")
-    print_with_color(:blue, msgprefix * "Pushing nonlasing mode $m with ωₙₗ[$m] = $(nlsol.ω[m]) to lasing solution.\n")
+    printstyled(:blue, msgprefix * "Pushing nonlasing mode $m with ωₙₗ[$m] = $(nlsol.ω[m]) to lasing solution.\n")
     lsol.ω[m] = real(nlsol.ω[m])
     lsol.a²[m] = 0
     iₐ = lsol.iₐ[m] = nlsol.iₐ[m]
@@ -11,7 +11,7 @@ function Base.push!(lsol::LasingSol, m::Integer, nlsol::NonlasingSol, msgprefix:
     # division.  For a complex scalar z, z/z may not be exactly zero in floating-point
     # arithmetic, because z/w is basically evaluated as z*conj(w) / abs(w)^2, during which
     # rounding that could make z / z different from 1 occurs.
-    assert(ψ[iₐ] ≈ 1)  # make sure ψₘ is already normalized
+    @assert ψ[iₐ] ≈ 1  # make sure ψₘ is already normalized
 
     M = length(lsol)
     lsol.activated[m] = true
@@ -22,7 +22,7 @@ function Base.push!(lsol::LasingSol, m::Integer, nlsol::NonlasingSol, msgprefix:
 end
 
 function Base.pop!(lsol::LasingSol, m::Integer, msgprefix::String="  ")
-    print_with_color(:blue, msgprefix * "Popping lasing mode $m from lasing solution.\n")
+    printstyled(:blue, msgprefix * "Popping lasing mode $m from lasing solution.\n")
     lsol.a²[m] = 0  # indicate this mode is nonlasing
     lsol.ψ[m] .= 0  # good for compressing data when writing in file
 
@@ -37,7 +37,7 @@ end
 # Lasing -> Nonlasing: take the mth lasing mode and use it to set the guess information
 # about the mth nonlasing mode.
 function Base.push!(nlsol::NonlasingSol, m::Integer, lsol::LasingSol, msgprefix::String="  ")
-    print_with_color(:blue, msgprefix * "Pushing lasing mode $m with ωₗ[$m] = $(lsol.ω[m]) to nonlasing solution.\n")
+    printstyled(:blue, msgprefix * "Pushing lasing mode $m with ωₗ[$m] = $(lsol.ω[m]) to nonlasing solution.\n")
     nlsol.ω[m] = lsol.ω[m]  # real scalar
     iₐ = nlsol.iₐ[m] = lsol.iₐ[m]  # scalar
     ψ = nlsol.ψ[m] .= lsol.ψ[m]  # vector
@@ -46,7 +46,7 @@ function Base.push!(nlsol::NonlasingSol, m::Integer, lsol::LasingSol, msgprefix:
     # division.  For a complex scalar z, z/z may not be exactly zero in floating-point
     # arithmetic, because z/w is basically evaluated as z*conj(w) / abs(w)^2, during which
     # rounding that could make z / z different from 1 occurs.
-    assert(ψ[iₐ] ≈ 1)  # make sure ψₘ is already normalized
+    @assert ψ[iₐ] ≈ 1  # make sure ψₘ is already normalized
 
     M = length(nlsol)
     nlsol.activated[m] = true
@@ -57,7 +57,7 @@ function Base.push!(nlsol::NonlasingSol, m::Integer, lsol::LasingSol, msgprefix:
 end
 
 function Base.pop!(nlsol::NonlasingSol, m::Integer, msgprefix::String="  ")
-    print_with_color(:blue, msgprefix * "Popping nonlasing mode $m from nonlasing solution.\n")
+    printstyled(:blue, msgprefix * "Popping nonlasing mode $m from nonlasing solution.\n")
     nlsol.ω[m] = real(nlsol.ω[m])  # indicate this mode is lasing
     nlsol.ψ[m] .= 0  # good for compressing data when writing in file
 
@@ -73,20 +73,20 @@ end
 # part, if any.  See Sec. III.D of the SALT paper.
 # Return the index of the mode to turn on; return 0 otherwise.
 function turnon!(lsol::LasingSol, nlsol::NonlasingSol, msgprefix::String="  ")
-    m = indmax(imag, nlsol.ω, nlsol.m_active)  # m==0 if nlsol.m_active is empty
+    m = argmax(imag, nlsol.ω, nlsol.m_active)  # m==0 if nlsol.m_active is empty
     m≠0 && imag(nlsol.ω[m])>0 || return 0  # consider imag(ω) = 0 as nonlasing in order to keep lasing equations minimal
 
     # Now m ≠ 0 and imag(nlsol.ω[m]) > 0.
     # If the mode m was shut down just now, do not turn it on; otherwise, turn on the mode.
-    print_with_color(:blue, msgprefix * "Turning on mode $m where ωₙₗ[m=1:$(length(nlsol))] = $(string(nlsol.ω)[17:end])...\n")  # 17 is to skip header "Complex{Float64}"
+    printstyled(:blue, msgprefix * "Turning on mode $m where ωₙₗ[m=1:$(length(nlsol))] = $(string(nlsol.ω)[17:end])...\n")  # 17 is to skip header "Complex{Float64}"
     if nlsol.activated[m]  # mode m is just shut down
         nlsol.ω[m] = real(nlsol.ω[m])
-        print_with_color(:red, msgprefix * "Don't, because mode $m was shut down just now.\n")
+        printstyled(:red, msgprefix * "Don't, because mode $m was shut down just now.\n")
         return 0
     else
         push!(lsol, m, nlsol)
         pop!(nlsol, m)
-        print_with_color(:blue, msgprefix * "Done.\n")
+        printstyled(:blue, msgprefix * "Done.\n")
         return m
     end
 end
@@ -95,20 +95,20 @@ end
 # Prepare NonlasingSol by shutting down the lasing mode with negative amplitude, if any.
 # Return the index of the mode to shut down; return 0 otherwise.
 function shutdown!(lsol::LasingSol, nlsol::NonlasingSol, msgprefix::String="  ")
-    m = indmin(identity, lsol.a², lsol.m_active)  # m==0 if lsol.m_active is empty
+    m = argmin(identity, lsol.a², lsol.m_active)  # m==0 if lsol.m_active is empty
     m≠0 && lsol.a²[m]≤0 || return 0  # consider a² = 0 as nonlasing in order to keep lasing equations minimal
 
     # Now m ≠ 0 and lsol.a²[m] ≤ 0.
     # If the mode m was turned on just now, do not shut it down; otherwise, shut down the mode.
-    print_with_color(:blue, msgprefix * "Shutting down mode $m where aₗ²[m=1:$(length(lsol))] = $(lsol.a²)...\n")
+    printstyled(:blue, msgprefix * "Shutting down mode $m where aₗ²[m=1:$(length(lsol))] = $(lsol.a²)...\n")
     if lsol.activated[m]  # mode m is just turned on
         lsol.a²[m] = 0
-        print_with_color(:red, msgprefix * "Don't, because mode $m was turned on just now.\n")
+        printstyled(:red, msgprefix * "Don't, because mode $m was turned on just now.\n")
         return 0
     else
         push!(nlsol, m, lsol)
         pop!(lsol, m)
-        print_with_color(:blue, msgprefix * "Done.\n")
+        printstyled(:blue, msgprefix * "Done.\n")
         return m
     end
 end

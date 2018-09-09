@@ -37,13 +37,13 @@ function anderson_salt!(lsol::LasingSol,
     # increase code readability, because doing update_lsol! right after norm_leq is an idiom.
     # m ≠ 0 is rarely used anyway.
     T = eltype(x)
-    xold = Vector{T}(n)
+    xold = Vector{T}(undef, n)
     xold .= x  # xold = x₀
     update_lsol!(lsol, lvar, param)  # x is updated to x₁ = g(x₀)
     # Note we need at least two x's to perform the m ≠ 0 Anderson acceleration.
 
     if m == 0 # simple fixed-point iteration (no memory)
-        for k = 1:maxit
+        while (k+=1) ≤ maxit
             init_lvar!(lvar, lsol, param)
             lleq = norm_leq(lsol, lvar, param)
             verbose && println(msgprefix * "k = $k: ‖leq‖/‖leq₀‖ = $(lleq/lleq₀)")
@@ -53,11 +53,11 @@ function anderson_salt!(lsol::LasingSol,
     else  # m ≠ 0
         # Pre-allocate all of the arrays we will need.  The goal is to allocate once and re-use
         # the storage during the iteration by operating in-place.
-        f = Vector{T}(n)
-        ∆X = Matrix{T}(n, m)  # columns: ∆x's
-        ∆F = Matrix{T}(n, m)  # columns: ∆f's
-        Q = Matrix{T}(n, m)  # space for QR factorization
-        β = Vector{T}(max(n,m))  # not m, in order to store RHS vector (f: length-n) and overwrite in-place via A_ldiv_B! (max length m)
+        f = Vector{T}(undef, n)
+        ∆X = Matrix{T}(undef, n, m)  # columns: ∆x's
+        ∆F = Matrix{T}(undef, n, m)  # columns: ∆f's
+        Q = Matrix{T}(undef, n, m)  # space for QR factorization
+        β = Vector{T}(undef, max(n,m))  # not m, in order to store RHS vector (f: length-n) and overwrite in-place via ldiv! (max length m)
 
         # Find x₁ = g(x₀): we need at least two x's to perform the Anderson acceleration.
         col = 1
@@ -83,7 +83,7 @@ function anderson_salt!(lsol::LasingSol,
         # - with which ∆fₖ₋₁ = f(xₖ) - f(xₖ₋₁) is calculated.
         #
         # Then we know ∆xₖ₋₁ and ∆fₖ₋₁, which are needed for the Anderson acceleration.
-        for k = 1:maxit
+        while (k+=1) ≤ maxit
             init_lvar!(lvar, lsol, param)
             lleq = norm_leq(lsol, lvar, param)
             verbose && println(msgprefix * "k = $k: ‖leq‖/‖leq₀‖ = $(lleq/lleq₀)")
@@ -111,11 +111,11 @@ function anderson_salt!(lsol::LasingSol,
             if k < m
                 # Construct subarrays to work in-place on a subset of the columns.
                 Q′, ∆F′ = @views Q[:,1:k], ∆F[:,1:k]
-                QR′ = qrfact!(copy!(Q′, ∆F′), Val{true})
-                A_ldiv_B!(QR′, β)
+                QR′ = qr!(copyto!(Q′, ∆F′), Val(true))
+                ldiv!(QR′, β)
             else
-                QR = qrfact!(copy!(Q, ∆F), Val{true})
-                A_ldiv_B!(QR, β)
+                QR = qr!(copyto!(Q, ∆F), Val(true))
+                ldiv!(QR, β)
             end
 
             # Replace the columns of ∆X (and ∆F in the next iteration) with the new data
@@ -138,7 +138,7 @@ function anderson_salt!(lsol::LasingSol,
         init_lvar!(lvar, lsol, param)
         lleq = norm_leq(lsol, lvar, param)
         verbose && println(msgprefix * "k = $k: ‖leq‖/‖leq₀‖ = $(lleq/lleq₀)")
-        warn("Anderson reached maxit = $maxit and didn't converge.")
+        @warn "Anderson reached maxit = $maxit and didn't converge."
     end
 
     return k, lleq, lleq₀

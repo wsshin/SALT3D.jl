@@ -18,9 +18,7 @@ const MAXIT_THRESHOLD = 50  # maximum number of bisection steps
 function solve_leq!(lsol, lvar, param; m=M_ANDERSON, τr=TR_ANDERSON, τa=TA_ANDERSON, maxit=MAXIT_ANDERSON, verbose=true)
     println("  Solve lasing eq. with modes m = $(lsol.m_active) where aₗ²[m=1:$(length(lsol))] = $(lsol.a²):")
 
-    tic()
-    n_anderson, ll, ll₀ = anderson_salt!(lsol, lvar, param, m=m, τr=τr, τa=τa, maxit=maxit, verbose=verbose)
-    t_anderson = toq()
+    t_anderson = @elapsed n_anderson, ll, ll₀ = anderson_salt!(lsol, lvar, param, m=m, τr=τr, τa=τa, maxit=maxit, verbose=verbose)
 
     # verbose && println("  No. of Anderson steps = $k, ‖leq‖ = $ll, ωₗ = $(lsol.ω), aₗ² = $(lsol.a²)")
     verbose && @printf("    No. of Anderson steps = %d (%f sec), ‖leq‖ = %.3e, ‖leq‖/‖leq₀‖ = %.3e\n", n_anderson, t_anderson, ll, ll/ll₀)
@@ -52,21 +50,21 @@ function solve_nleq!(nlsol::NonlasingSol,
 
     for m = nlsol.m_active
         # Newton method for nonlasing modes
-        tic()
-        k = 0
-        init_nlvar!(nlvar, m, nlsol, D, param)
-        lnleq₀ = norm_nleq(m, nlsol, nlvar)
-        # verbose && println("  Initial residual norm: ‖nleq₀‖ = $lnleq₀")
-
-        τ = max(τr*lnleq₀, τa)
-        lnleq = lnleq₀
-        for k = 0:maxit
-            lnleq ≤ τ && break
-            update_nlsol!(nlsol, m, nlvar)
+        t_newton = @elapsed begin
+            k = 0
             init_nlvar!(nlvar, m, nlsol, D, param)
-            lnleq = norm_nleq(m, nlsol, nlvar)
+            lnleq₀ = norm_nleq(m, nlsol, nlvar)
+            # verbose && println("  Initial residual norm: ‖nleq₀‖ = $lnleq₀")
+
+            τ = max(τr*lnleq₀, τa)
+            lnleq = lnleq₀
+            while (k+=1) ≤ maxit
+                lnleq ≤ τ && break
+                update_nlsol!(nlsol, m, nlvar)
+                init_nlvar!(nlvar, m, nlsol, D, param)
+                lnleq = norm_nleq(m, nlsol, nlvar)
+            end
         end
-        t_newton = toq()
         # verbose && println("  mode $m: No. of Newton steps = $k, ‖nleq‖ = $lnleq")
         verbose && @printf("    mode %d: No. of Newton steps = %d (%f sec), ‖nleq‖ = %.3e, ‖nleq‖/‖nleq₀‖ = %.3e\n", m, k, t_newton, lnleq, lnleq/lnleq₀)
     end
@@ -154,7 +152,7 @@ function solve_salt!(lsol::LasingSol, lvar::LasingVar,
         # Below, solve_nleq! constructs the nonlasing equation for the new D₀ with the
         # already-calculated lasing modes and updates the nonlasing modes by solving the
         # equation.
-        assert(lvar.inited)  # lvar.rvar.D is initialized
+        @assert lvar.inited  # lvar.rvar.D is initialized
         solve_nleq!(nlsol, nlvar, param, lvar.rvar.D, τr=τr_newton, τa=τa_newton, maxit=maxit_newton, verbose=verbose)
 
         # Below, turnon! checks if some of the newly calculated nonlasing modes have
@@ -240,9 +238,9 @@ function simulate!(lsol::LasingSol, lvar::LasingVar,
     M = length(lsol)
     N = length(lsol.ψ[1])
 
-    ωout = outω ? MatComplex(M,nout) : MatComplex(M,0)
+    ωout = outω ? MatComplex(undef,M,nout) : MatComplex(undef,M,0)
     aout = outa ? zeros(M,nout) : zeros(M,0)  # use zeros because some entries of a²out won't be overwritten
-    ψout = outψ ? Array{CFloat,3}(M,nout,N) : Array{CFloat,3}(M,0,N)
+    ψout = outψ ? Array{CFloat,3}(undef,M,nout,N) : Array{CFloat,3}(undef,M,0,N)
 
     nAA = zeros(Int, nout)  # nummber of Anderson acceleration steps
     tAA = zeros(nout)  # time taken for Anderson acceleration
@@ -342,7 +340,7 @@ function find_threshold_secant!(lsol::LasingSol, lvar::LasingVar,
         push!(lsol, m, nlsol)
         pop!(nlsol, m)
     end
-    assert(lsol.active[m])
+    @assert lsol.active[m]
 
     println("d = $d:")
     setD₀!(param, d)
@@ -492,9 +490,9 @@ function find_threshold_bisect!(lsol::LasingSol, lvar::LasingVar,
 
     while (n_bisect+=1) ≤ maxit_bisect && abs(dr-dl) > max(τr_bisect * abs(dr), τa_bisect)
         if lnl_r && lnl_l
-            warn("Bisection terminates prematurely because mode $m is seen simultaneously lasing and nonlasing at both dl = $dl and dr = $dr.  "
-                * "Mode $m is too close to threshold for given solver tolerance.  Further bisection is meaningleses.  "
-                * "To get more accurate threshold, lower solver tolerance.")
+            @warn "Bisection terminates prematurely because mode $m is seen simultaneously lasing and nonlasing at both dl = $dl and dr = $dr.  " *
+                "Mode $m is too close to threshold for given solver tolerance.  Further bisection is meaningleses.  " *
+                "To get more accurate threshold, lower solver tolerance."
             break
         end
         dc = 0.5(dl+dr)
@@ -517,7 +515,7 @@ function find_threshold_bisect!(lsol::LasingSol, lvar::LasingVar,
             lase_r = lase_c
             lnl_r = lnl_c
         end
-        assert(xor(lase_l, lase_r))
+        @assert xor(lase_l, lase_r)
 
         println("After bisection step $n_bisect, lasing status of mode $m: $lase_l at d = $dl; $lase_r at d = $dr.")
     end
