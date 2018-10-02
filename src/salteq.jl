@@ -1,7 +1,7 @@
 # Define variables used throughout the package and functions to initialize them.
 
 export SALTParam
-export gen_γsalt, gen_γsalt′, hole_burning!
+export gen_γ, gen_γ′, hole_burning!
 
 # Below, allow vectors and matrices to be PETSc ones if their sizes are 3×(# of grid points).
 # If their sizes are the number of modes, keep them Julia vectors.
@@ -52,8 +52,8 @@ export gen_γsalt, gen_γsalt′, hole_burning!
 # AbsMatComplex.  On the other hand, the argument CC is read-only, so it is typed AbsMatNumber.
 
 # Generate the default gain curve of SALT, which describes two-level atoms.
-gen_γsalt(ωₐ::Number, γperp::Number) = ω::Number -> γperp / (ω - ωₐ + im * γperp)  # scalar
-gen_γsalt′(ωₐ::Number, γperp::Number) = ω::Number -> -γperp / (ω - ωₐ + im * γperp)^2  # scalar
+gen_γ(ωₐ::Real, γperp::Real) = ω::Number -> γperp / (ω - ωₐ + im * γperp)  # scalar
+gen_γ′(ωₐ::Real, γperp::Real) = ω::Number -> -γperp / (ω - ωₐ + im * γperp)^2  # scalar
 
 # Parameters defining the SALT problem
 # Consider including CC to param, if I am really going to use ωₐ for PML for all modes.

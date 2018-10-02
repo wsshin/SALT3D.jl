@@ -12,7 +12,7 @@ m = 1
 γperp = 1.0
 D₀ = fill(0.01, N)
 D₀[ind_in] .= 1.0
-param = SALTParam(gen_γsalt(ωₐ,γperp), gen_γsalt′(ωₐ,γperp), εc, D₀)
+param = SALTParam(gen_γ(ωₐ,γperp), gen_γ′(ωₐ,γperp), εc, D₀)
 
 # Create a solution.
 M = 3
@@ -59,8 +59,8 @@ end
 mvar = SALTBase.LasingModalVar(DefaultLSD(), N)
 SALTBase.init_modal_var!(mvar, m, sol, rvar, param)
 
-γ = gen_γsalt(ωₐ, γperp)(ωₘ)
-γ′ = gen_γsalt′(ωₐ, γperp)(ωₘ)
+γ = gen_γ(ωₐ, γperp)(ωₘ)
+γ′ = gen_γ′(ωₐ, γperp)(ωₘ)
 ε = εc + γ*D
 @testset "modal variables" begin
     @test mvar.ω²γψ ≈ (ωₘ^2 * γ) .* ψ[m]
