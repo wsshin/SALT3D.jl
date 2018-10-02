@@ -261,8 +261,8 @@ function init_modal_var!(mvar::LasingModalVar,
     isreal(lsol.ω[m]) || throw(ArgumentError("lsol.ω[$m] = $(lsol.ω[m]) must be real."))
     ω = real(lsol.ω[m])
 
-    γ = gain(ω, param.ωₐ, param.γperp)
-    γ′ = gain′(ω, param.ωₐ, param.γperp)
+    γ = param.gain(ω)
+    γ′ = param.gain′(ω)
 
     ε = lsol.vtemp  # temporary storage for effective permitivity: εc + γ D
     ε .= param.εc .+ γ .* rvar.D

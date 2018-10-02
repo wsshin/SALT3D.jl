@@ -97,8 +97,8 @@ function init_modal_var!(mvar::NonlasingModalVar,
     ω = nlsol.ω[m]
     ψ = nlsol.ψ[m]
 
-    γ = gain(ω, param.ωₐ, param.γperp)
-    γ′ = gain′(ω, param.ωₐ, param.γperp)
+    γ = param.gain(ω)
+    γ′ = param.gain′(ω)
 
     # Below, avoid allocations and use preallocated arrays in mvar.
     ε = nlsol.vtemp  # temporary storage for effective permitivity: εc + γ D

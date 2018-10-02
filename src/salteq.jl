@@ -1,7 +1,7 @@
 # Define variables used throughout the package and functions to initialize them.
 
 export SALTParam
-export gain, hole_burning!
+export gen_γsalt, gen_γsalt′, hole_burning!
 
 # Below, allow vectors and matrices to be PETSc ones if their sizes are 3×(# of grid points).
 # If their sizes are the number of modes, keep them Julia vectors.
@@ -51,21 +51,25 @@ export gain, hole_burning!
 # output is stored, so it had better have ComplexF64 as the eltype, so I type it as
 # AbsMatComplex.  On the other hand, the argument CC is read-only, so it is typed AbsMatNumber.
 
+# Generate the default gain curve of SALT, which describes two-level atoms.
+gen_γsalt(ωₐ::Number, γperp::Number) = ω::Number -> γperp / (ω - ωₐ + im * γperp)  # scalar
+gen_γsalt′(ωₐ::Number, γperp::Number) = ω::Number -> -γperp / (ω - ωₐ + im * γperp)^2  # scalar
+
 # Parameters defining the SALT problem
 # Consider including CC to param, if I am really going to use ωₐ for PML for all modes.
 mutable struct SALTParam{VC<:AbsVecComplex,VF<:AbsVecFloat}  # VC, VF can be PETSc vectors
-    ωₐ::Float  # atomic transition angular frequency
-    γperp::Float  # relaxation rate of polarization
+    gain::Function  # gain curve
+    gain′::Function  # derivative of gain curve
     εc::VC  # permittivity of cold cavity
     D₀::VF  # pump strength
-    function SALTParam{VC,VF}(ωₐ::Real,
-                              γperp::Real,
+    function SALTParam{VC,VF}(gain::Function,
+                              gain′::Function,
                               εc::AbsVecNumber,
                               D₀::AbsVecReal) where {VC<:AbsVecComplex,VF<:AbsVecFloat}
         length(εc) == length(D₀) ||
             throw(ArgumentError("legnth(εc) == $(length(εc)) and length(D₀) == $(length(D₀)) must be the same"))
 
-        return new(ωₐ, γperp, εc, D₀)
+        return new(gain, gain′, εc, D₀)
     end
 end
 
@@ -74,24 +78,20 @@ end
 #     SALTParam{VC,VF}(ωₐ, γperp, εc, D₀)
 
 # The following constructor copies εc and D₀.
-function SALTParam(ωₐ::Real, γperp::Real, εc::AbsVecNumber, D₀::AbsVecReal)
+function SALTParam(gain::Function, gain′::Function, εc::AbsVecNumber, D₀::AbsVecReal)
     εc_new = similar(εc,CFloat)
     copyto!(εc_new, εc)
 
     D₀_new = similar(D₀,Float)
     copyto!(D₀_new, D₀)
 
-    return SALTParam{typeof(εc_new), typeof(D₀_new)}(ωₐ, γperp, εc_new, D₀_new)
+    return SALTParam{typeof(εc_new), typeof(D₀_new)}(gain, gain′, εc_new, D₀_new)
 end
 
 # To do: check if the following works for vtemp of PETSc vector type.
-SALTParam(vtemp::AbsVec) =  # template vector with N entries
-    SALTParam(0, 0, similar(vtemp,CFloat).=0, similar(vtemp,Float).=0)
-SALTParam(N::Integer) = SALTParam(VecFloat(undef,N))
-
-
-gain(ω::Number, ωₐ::Number, γperp::Number) = γperp / (ω - ωₐ + im * γperp)  # scalar
-gain′(ω::Number, ωₐ::Number, γperp::Number) = -γperp / (ω - ωₐ + im * γperp)^2  # scalar
+SALTParam(gain::Function, gain′::Function, vtemp::AbsVec) =  # template vector with N entries
+    SALTParam(gain, gain′, similar(vtemp,CFloat).=0, similar(vtemp,Float).=0)
+SALTParam(gain::Function, gain′::Function, N::Integer) = SALTParam(gain, gain′, VecFloat(undef,N))
 
 
 # Evaluate the hole-burning term + 1 = 1 + ∑a²|ψ|².

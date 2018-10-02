@@ -18,8 +18,8 @@ a² = rand(M)
 Ψ = randn(ComplexF64,N,M)
 ψ = [Ψ[:,j] for j = 1:M]
 
-γ = gain(ωₘ, ωₐ, γperp)
-γ′ = SALTBase.gain′(ωₘ, ωₐ, γperp)
+γ = gen_γsalt(ωₐ, γperp)(ωₘ)
+γ′ = gen_γsalt′(ωₐ, γperp)(ωₘ)
 @test γ′ ≈ -γ^2 / γperp
 
 hb = Vector{Float64}(undef, N)
