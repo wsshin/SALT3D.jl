@@ -12,7 +12,7 @@ m = 1
 γperp = 1.0
 D₀ = fill(0.01, N)
 D₀[ind_in] .= 1.0
-param = SALTParam(gen_γ(ωₐ,γperp), gen_γ′(ωₐ,γperp), εc, D₀)
+gp = GainProfile(gen_γ(ωₐ,γperp), gen_γ′(ωₐ,γperp), εc, D₀)
 
 # Create a solution.
 M = 3
@@ -44,7 +44,7 @@ SALTBase.∆popinv!(∆D, D′, ∆sol, sol)
 ∇ₐ₂D = [zeros(N) for m = 1:M]
 SALTBase.∇ₐ₂popinv!(∇ₐ₂D, D′, sol)
 rvar = SALTBase.LasingReducedVar(N, M)
-SALTBase.init_reduced_var!(rvar, ∆sol, sol, param)
+SALTBase.init_reduced_var!(rvar, ∆sol, sol, gp)
 @testset "reduced variables" begin
     @test rvar.D ≈ D
     @test rvar.D′ ≈ D′
@@ -57,7 +57,7 @@ end
 
 
 mvar = SALTBase.LasingModalVar(DefaultLSD(), N)
-SALTBase.init_modal_var!(mvar, m, sol, rvar, param)
+SALTBase.init_modal_var!(mvar, m, sol, rvar, gp)
 
 γ = gen_γ(ωₐ, γperp)(ωₘ)
 γ′ = gen_γ′(ωₐ, γperp)(ωₘ)

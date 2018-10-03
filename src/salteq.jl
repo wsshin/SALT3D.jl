@@ -1,6 +1,6 @@
 # Define variables used throughout the package and functions to initialize them.
 
-export SALTParam
+export GainProfile
 export gen_γ, gen_γ′, gen_abs2γ, gen_abs2γ′, hole_burning!
 
 # Below, allow vectors and matrices to be PETSc ones if their sizes are 3×(# of grid points).
@@ -27,7 +27,7 @@ export gen_γ, gen_γ′, gen_abs2γ, gen_abs2γ′, hole_burning!
 # is the concrete ComplexF64.
 # - On the other hand, the argument type of εc in the inner constructor is not AbsVecComplex,
 # but AbsVecNumber, because even if its element is not typed ComplexF64, it is converted to
-# a vector with ComplexF64 when writing in the field εc of SALTParam.  (Note that the
+# a vector with ComplexF64 when writing in the field εc of GainProfile.  (Note that the
 # argument εc of the inner constructor is copied to the field εc, so it is read-only.)
 # - [I think this item is outdated, because the current outer constructor take εc of
 # AbsVecNumber type.]  Still, in the outer constructor, the argument type of εc is not
@@ -65,20 +65,20 @@ gen_abs2γ(ωₐ::Real, γperp::Real) = ω::Real -> γperp^2 / ((ω - ωₐ)^2 +
 gen_abs2γ′(ωₐ::Real, γperp::Real) = ω::Real -> -2γperp^2 * (ω - ωₐ) / ((ω - ωₐ)^2 + γperp^2)^2  # scalar; note ω is real for this
 
 # Parameters defining the SALT problem
-# Consider including CC to param, if I am really going to use ωₐ for PML for all modes.
-mutable struct SALTParam{VC<:AbsVecComplex,VF<:AbsVecFloat}  # VC, VF can be PETSc vectors
+# Consider including CC to gp, if I am really going to use ωₐ for PML for all modes.
+mutable struct GainProfile{VC<:AbsVecComplex,VF<:AbsVecFloat}  # VC, VF can be PETSc vectors
     gain::Function  # gain curve
     gain′::Function  # derivative of gain curve
     abs2gain::Function  # squared absolute value of gain curve
     abs2gain′::Function  # derivative of squared absolute value of gain curve
     εc::VC  # permittivity of cold cavity
     D₀::VF  # pump strength
-    function SALTParam{VC,VF}(gain::Function,
-                              gain′::Function,
-                              abs2gain::Function,
-                              abs2gain′::Function,
-                              εc::AbsVecNumber,
-                              D₀::AbsVecReal) where {VC<:AbsVecComplex,VF<:AbsVecFloat}
+    function GainProfile{VC,VF}(gain::Function,
+                                gain′::Function,
+                                abs2gain::Function,
+                                abs2gain′::Function,
+                                εc::AbsVecNumber,
+                                D₀::AbsVecReal) where {VC<:AbsVecComplex,VF<:AbsVecFloat}
         length(εc) == length(D₀) ||
             throw(ArgumentError("legnth(εc) == $(length(εc)) and length(D₀) == $(length(D₀)) must be the same"))
 
@@ -87,25 +87,25 @@ mutable struct SALTParam{VC<:AbsVecComplex,VF<:AbsVecFloat}  # VC, VF can be PET
 end
 
 # # The following constructor avoids copying εc and D₀.
-# SALTParam(gain::Function, gain′::Function, abs2gain::Function, abs2gain′::Function, εc::VC, D₀::VF) where {VC<:AbsVecComplex,VF<:AbsVecFloat} =
-#     SALTParam{VC,VF}(gain, gain′, abs2gain, abs2gain′, εc, D₀)
+# GainProfile(gain::Function, gain′::Function, abs2gain::Function, abs2gain′::Function, εc::VC, D₀::VF) where {VC<:AbsVecComplex,VF<:AbsVecFloat} =
+#     GainProfile{VC,VF}(gain, gain′, abs2gain, abs2gain′, εc, D₀)
 
 # The following constructor copies εc and D₀.
-function SALTParam(gain::Function, gain′::Function, abs2gain::Function, abs2gain′::Function, εc::AbsVecNumber, D₀::AbsVecReal)
+function GainProfile(gain::Function, gain′::Function, abs2gain::Function, abs2gain′::Function, εc::AbsVecNumber, D₀::AbsVecReal)
     εc_new = similar(εc,CFloat)
     copyto!(εc_new, εc)
 
     D₀_new = similar(D₀,Float)
     copyto!(D₀_new, D₀)
 
-    return SALTParam{typeof(εc_new), typeof(D₀_new)}(gain, gain′, abs2gain, abs2gain′, εc_new, D₀_new)
+    return GainProfile{typeof(εc_new), typeof(D₀_new)}(gain, gain′, abs2gain, abs2gain′, εc_new, D₀_new)
 end
 
 # To do: check if the following works for vtemp of PETSc vector type.
-SALTParam(gain::Function, gain′::Function, abs2gain::Function, abs2gain′::Function, vtemp::AbsVec) =  # template vector with N entries
-    SALTParam(gain, gain′, abs2gain, abs2gain′, similar(vtemp,CFloat).=0, similar(vtemp,Float).=0)
-SALTParam(gain::Function, gain′::Function, abs2gain::Function, abs2gain′::Function, N::Integer) =
-    SALTParam(gain, gain′, abs2gain, abs2gain′, VecFloat(undef,N))
+GainProfile(gain::Function, gain′::Function, abs2gain::Function, abs2gain′::Function, vtemp::AbsVec) =  # template vector with N entries
+    GainProfile(gain, gain′, abs2gain, abs2gain′, similar(vtemp,CFloat).=0, similar(vtemp,Float).=0)
+GainProfile(gain::Function, gain′::Function, abs2gain::Function, abs2gain′::Function, N::Integer) =
+    GainProfile(gain, gain′, abs2gain, abs2gain′, VecFloat(undef,N))
 
 
 # Evaluate 1 + hole-burning term = 1 + ∑|γaψ|².

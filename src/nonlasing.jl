@@ -93,20 +93,20 @@ function init_modal_var!(mvar::NonlasingModalVar,
                          m::Integer,  # index of lasing mode
                          nlsol::NonlasingSol,
                          D::AbsVecFloat,  # population inversion
-                         param::SALTParam)
+                         gp::GainProfile)
     ω = nlsol.ω[m]
     ψ = nlsol.ψ[m]
 
-    γ = param.gain(ω)
-    γ′ = param.gain′(ω)
+    γ = gp.gain(ω)
+    γ′ = gp.gain′(ω)
 
     # Below, avoid allocations and use preallocated arrays in mvar.
     ε = nlsol.vtemp  # temporary storage for effective permitivity: εc + γ D
-    ε .= param.εc .+ γ .* D
-    # @info "maximum(D) = $(maximum(D)), maximum(|εc|) = $(maximum(abs.(param.εc)))"
+    ε .= gp.εc .+ γ .* D
+    # @info "maximum(D) = $(maximum(D)), maximum(|εc|) = $(maximum(abs.(gp.εc)))"
 
     init_lsd!(mvar.lsd, ω, ε)
-    mvar.∂f∂ω .= (2ω .* param.εc + (2ω*γ + ω^2*γ′) .* D) .* ψ  # derivative of nonlasing equation function w.r.t. ω
+    mvar.∂f∂ω .= (2ω .* gp.εc + (2ω*γ + ω^2*γ′) .* D) .* ψ  # derivative of nonlasing equation function w.r.t. ω
 
     # Mark mvar as initialized.
     mvar.inited = true
@@ -114,8 +114,8 @@ function init_modal_var!(mvar::NonlasingModalVar,
     return nothing
 end
 
-init_nlvar!(nlvar::NonlasingVar, m::Integer, nlsol::NonlasingSol, D::AbsVecFloat, param::SALTParam) =
-    init_modal_var!(nlvar.mvar_vec[m], m, nlsol, D, param)
+init_nlvar!(nlvar::NonlasingVar, m::Integer, nlsol::NonlasingSol, D::AbsVecFloat, gp::GainProfile) =
+    init_modal_var!(nlvar.mvar_vec[m], m, nlsol, D, gp)
 
 # Unlike norm_leq, this norm_nleq takes the mode index m, because nonlasing mode equations
 # are uncoupled between nonlasing modes.  This asymmetry between norm_leq and norm_lneq may

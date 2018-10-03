@@ -234,12 +234,12 @@ LasingVar(lsd_temp::LinearSolverData, vtemp::AbsVec, M::Integer) =
     LasingVar(∆LasingSol(vtemp, M), [LasingModalVar(lsd_temp, vtemp) for m = 1:M], LasingReducedVar(vtemp, M), LasingConstraint(M), false)
 LasingVar(lsd_temp::LinearSolverData, N::Integer, M::Integer) = LasingVar(lsd_temp, VecFloat(undef,N), M)
 
-function init_reduced_var!(rvar::LasingReducedVar, ∆lsol::∆LasingSol, lsol::LasingSol, param::SALTParam)
+function init_reduced_var!(rvar::LasingReducedVar, ∆lsol::∆LasingSol, lsol::LasingSol, gp::GainProfile)
     hb = lsol.vtemp  # temporary storage for hole-burning term
     hole_burning!(hb, lsol.a², lsol.ψ)
 
-    rvar.D .= param.D₀ ./ hb  # D = D₀ / (1 + ∑a²|ψ|²)
-    rvar.D′ .= -param.D₀ ./ abs2.(hb)  # D′(∑a²|ψ|²) = -D₀ / (1+∑a²|ψ|²)²
+    rvar.D .= gp.D₀ ./ hb  # D = D₀ / (1 + ∑a²|ψ|²)
+    rvar.D′ .= -gp.D₀ ./ abs2.(hb)  # D′(∑a²|ψ|²) = -D₀ / (1+∑a²|ψ|²)²
 
     ∆popinv!(rvar.∆D, rvar.D′, ∆lsol, lsol)  # comment this out when ∆ψ_old = 0 (so that ∆D = 0)
     ∇ₐ₂popinv!(rvar.∇ₐ₂D, rvar.D′, lsol)
@@ -257,15 +257,15 @@ function init_modal_var!(mvar::LasingModalVar,
                          m::Integer,  # index of lasing mode
                          lsol::LasingSol,
                          rvar::LasingReducedVar,
-                         param::SALTParam)
+                         gp::GainProfile)
     isreal(lsol.ω[m]) || throw(ArgumentError("lsol.ω[$m] = $(lsol.ω[m]) must be real."))
     ω = real(lsol.ω[m])
 
-    γ = param.gain(ω)
-    γ′ = param.gain′(ω)
+    γ = gp.gain(ω)
+    γ′ = gp.gain′(ω)
 
     ε = lsol.vtemp  # temporary storage for effective permitivity: εc + γ D
-    ε .= param.εc .+ γ .* rvar.D
+    ε .= gp.εc .+ γ .* rvar.D
 
     init_lsd!(mvar.lsd, ω, ε)
     mvar.ω²γψ .= (ω^2*γ) .* lsol.ψ[m]
@@ -287,15 +287,15 @@ function init_∆lsol!(∆lsol::∆LasingSol)
  end
 
 
-function init_lvar!(lvar::LasingVar, lsol::LasingSol, param::SALTParam)
+function init_lvar!(lvar::LasingVar, lsol::LasingSol, gp::GainProfile)
     ∆lsol = lvar.∆lsol
     mvar_vec = lvar.mvar_vec
     rvar = lvar.rvar
 
     init_∆lsol!(∆lsol)  # make ∆lsol all zero
-    init_reduced_var!(rvar, ∆lsol, lsol, param)
+    init_reduced_var!(rvar, ∆lsol, lsol, gp)
     for m = lsol.m_active
-        init_modal_var!(mvar_vec[m], m, lsol, rvar, param)
+        init_modal_var!(mvar_vec[m], m, lsol, rvar, gp)
     end
 
     lvar.inited = true
@@ -317,7 +317,7 @@ function norm_leq_impl(lsol::LasingSol, mvar_vec::AbsVec{<:LasingModalVar})
     return √leq²  # return 0.0 if lsol.m_active is empty
 end
 
-function norm_leq(lsol::LasingSol, lvar::LasingVar, param::SALTParam)
+function norm_leq(lsol::LasingSol, lvar::LasingVar, gp::GainProfile)
     lvar.inited || throw(ArgumentError("lvar is uninitialized: call init_lvar!(...) first."))
 
     return norm_leq_impl(lsol, lvar.mvar_vec)
@@ -437,9 +437,9 @@ end
 
 
 # lvar must be already initialized by init_lvar! before starting the fixed-point iteration.
-function update_lsol!(lsol::LasingSol, lvar::LasingVar, param::SALTParam)
+function update_lsol!(lsol::LasingSol, lvar::LasingVar, gp::GainProfile)
     lvar.inited || throw(ArgumentError("lvar is uninitialized: call init_lvar!(...) first."))
-    update_lsol_impl!(lsol, lvar.∆lsol, lvar.mvar_vec, lvar.rvar, lvar.cst, param)
+    update_lsol_impl!(lsol, lvar.∆lsol, lvar.mvar_vec, lvar.rvar, lvar.cst, gp)
     lvar.inited = false
 
     return nothing
@@ -459,7 +459,7 @@ function update_lsol_impl!(lsol::LasingSol,
                            mvar_vec::AbsVec{<:LasingModalVar},  # must be already initialized
                            rvar::LasingReducedVar,  # must be already initialized
                            cst::LasingConstraint,
-                           param::SALTParam)
+                           gp::GainProfile)
     # Construct the constraint equation on ∆ω and ∆a.
     cst.A .= 0
     cst.b .= 0
