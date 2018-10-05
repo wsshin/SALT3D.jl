@@ -55,7 +55,7 @@ function linsolve_transpose!(x::AbsVecComplex, lsd::LinearSolverData, b::AbsVecC
 function linapply!(b::AbsVecComplex, lsd::LinearSolverData, x::AbsVecComplex) end
 
 include("base.jl")
-include("salteq.jl")
+include("gain.jl")
 include("lasing.jl")
 include("nonlasing.jl")
 include("anderson.jl")

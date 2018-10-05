@@ -7,5 +7,5 @@ Base.similar(::DefaultLSD) = DefaultLSD()
 Base.size(::DefaultLSD) = (0,0)
 
 include("base.jl")
-include("salteq.jl")
+include("gain.jl")
 include("lasing.jl")
