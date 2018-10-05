@@ -1,7 +1,7 @@
 # Nonlasing -> Lasing: take the mth nonlasing mode and use it to set the guess information
 # about the mth lasing mode.
 function Base.push!(lsol::LasingSol, m::Integer, nlsol::NonlasingSol, msgprefix::String="  ")
-    printstyled(:blue, msgprefix * "Pushing nonlasing mode $m with ωₙₗ[$m] = $(nlsol.ω[m]) to lasing solution.\n")
+    printstyled(msgprefix * "Pushing nonlasing mode $m with ωₙₗ[$m] = $(nlsol.ω[m]) to lasing solution.\n", color=:blue)
     lsol.ω[m] = real(nlsol.ω[m])
     lsol.a²[m] = 0
     iₐ = lsol.iₐ[m] = nlsol.iₐ[m]
@@ -22,7 +22,7 @@ function Base.push!(lsol::LasingSol, m::Integer, nlsol::NonlasingSol, msgprefix:
 end
 
 function Base.pop!(lsol::LasingSol, m::Integer, msgprefix::String="  ")
-    printstyled(:blue, msgprefix * "Popping lasing mode $m from lasing solution.\n")
+    printstyled(msgprefix * "Popping lasing mode $m from lasing solution.\n", color=:blue)
     lsol.a²[m] = 0  # indicate this mode is nonlasing
     lsol.ψ[m] .= 0  # good for compressing data when writing in file
 
@@ -37,7 +37,7 @@ end
 # Lasing -> Nonlasing: take the mth lasing mode and use it to set the guess information
 # about the mth nonlasing mode.
 function Base.push!(nlsol::NonlasingSol, m::Integer, lsol::LasingSol, msgprefix::String="  ")
-    printstyled(:blue, msgprefix * "Pushing lasing mode $m with ωₗ[$m] = $(lsol.ω[m]) to nonlasing solution.\n")
+    printstyled(msgprefix * "Pushing lasing mode $m with ωₗ[$m] = $(lsol.ω[m]) to nonlasing solution.\n", color=:blue)
     nlsol.ω[m] = lsol.ω[m]  # real scalar
     iₐ = nlsol.iₐ[m] = lsol.iₐ[m]  # scalar
     ψ = nlsol.ψ[m] .= lsol.ψ[m]  # vector
@@ -57,7 +57,7 @@ function Base.push!(nlsol::NonlasingSol, m::Integer, lsol::LasingSol, msgprefix:
 end
 
 function Base.pop!(nlsol::NonlasingSol, m::Integer, msgprefix::String="  ")
-    printstyled(:blue, msgprefix * "Popping nonlasing mode $m from nonlasing solution.\n")
+    printstyled(msgprefix * "Popping nonlasing mode $m from nonlasing solution.\n", color=:blue)
     nlsol.ω[m] = real(nlsol.ω[m])  # indicate this mode is lasing
     nlsol.ψ[m] .= 0  # good for compressing data when writing in file
 
@@ -78,15 +78,15 @@ function turnon!(lsol::LasingSol, nlsol::NonlasingSol, msgprefix::String="  ")
 
     # Now m ≠ 0 and imag(nlsol.ω[m]) > 0.
     # If the mode m was shut down just now, do not turn it on; otherwise, turn on the mode.
-    printstyled(:blue, msgprefix * "Turning on mode $m where ωₙₗ[m=1:$(length(nlsol))] = $(string(nlsol.ω)[17:end])...\n")  # 17 is to skip header "Complex{Float64}"
+    printstyled(msgprefix * "Turning on mode $m where ωₙₗ[m=1:$(length(nlsol))] = $(string(nlsol.ω)[17:end])...\n", color=:blue)  # 17 is to skip header "Complex{Float64}"
     if nlsol.activated[m]  # mode m is just shut down
         nlsol.ω[m] = real(nlsol.ω[m])
-        printstyled(:red, msgprefix * "Don't, because mode $m was shut down just now.\n")
+        printstyled(msgprefix * "Don't, because mode $m was shut down just now.\n", color=:red)
         return 0
     else
         push!(lsol, m, nlsol)
         pop!(nlsol, m)
-        printstyled(:blue, msgprefix * "Done.\n")
+        printstyled(msgprefix * "Done.\n", color=:blue)
         return m
     end
 end
@@ -100,15 +100,15 @@ function shutdown!(lsol::LasingSol, nlsol::NonlasingSol, msgprefix::String="  ")
 
     # Now m ≠ 0 and lsol.a²[m] ≤ 0.
     # If the mode m was turned on just now, do not shut it down; otherwise, shut down the mode.
-    printstyled(:blue, msgprefix * "Shutting down mode $m where aₗ²[m=1:$(length(lsol))] = $(lsol.a²)...\n")
+    printstyled(msgprefix * "Shutting down mode $m where aₗ²[m=1:$(length(lsol))] = $(lsol.a²)...\n", color=:blue)
     if lsol.activated[m]  # mode m is just turned on
         lsol.a²[m] = 0
-        printstyled(:red, msgprefix * "Don't, because mode $m was turned on just now.\n")
+        printstyled(msgprefix * "Don't, because mode $m was turned on just now.\n", color=:red)
         return 0
     else
         push!(nlsol, m, lsol)
         pop!(lsol, m)
-        printstyled(:blue, msgprefix * "Done.\n")
+        printstyled(msgprefix * "Done.\n", color=:blue)
         return m
     end
 end

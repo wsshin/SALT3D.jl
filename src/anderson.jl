@@ -7,7 +7,8 @@
 # This implementation operates in-place as much as possible.
 function anderson_salt!(lsol::LasingSol,
                         lvar::LasingVar,
-                        gp::GainProfile;
+                        gp::GainProfile,
+                        εc::AbsVecComplex;
                         m::Integer=2, # number of additional x's kept in algorithm; m = 0 means unaccelerated iteration
                         τr::Real=1e-4,  # relative tolerance; consider using Base.rtoldefault(Float)
                         τa::Real=1e-8,  # absolute tolerance
@@ -20,7 +21,7 @@ function anderson_salt!(lsol::LasingSol,
     maxit ≥ 0 || throw(ArgumentError("maxit = $maxit must be ≥ 0."))
 
     k = 0
-    init_lvar!(lvar, lsol, gp)
+    init_lvar!(lvar, lsol, gp, εc)
     lleq₀ = norm_leq(lsol, lvar, gp)
     # verbose && println(msgprefix * "Anderson acceleration:")
     verbose && println(msgprefix * "Initial residual norm: ‖leq₀‖ = $lleq₀")
@@ -44,7 +45,7 @@ function anderson_salt!(lsol::LasingSol,
 
     if m == 0 # simple fixed-point iteration (no memory)
         while (k+=1) ≤ maxit
-            init_lvar!(lvar, lsol, gp)
+            init_lvar!(lvar, lsol, gp, εc)
             lleq = norm_leq(lsol, lvar, gp)
             verbose && println(msgprefix * "k = $k: ‖leq‖/‖leq₀‖ = $(lleq/lleq₀)")
             lleq ≤ τ && break
@@ -84,7 +85,7 @@ function anderson_salt!(lsol::LasingSol,
         #
         # Then we know ∆xₖ₋₁ and ∆fₖ₋₁, which are needed for the Anderson acceleration.
         while (k+=1) ≤ maxit
-            init_lvar!(lvar, lsol, gp)
+            init_lvar!(lvar, lsol, gp, εc)
             lleq = norm_leq(lsol, lvar, gp)
             verbose && println(msgprefix * "k = $k: ‖leq‖/‖leq₀‖ = $(lleq/lleq₀)")
             lleq ≤ τ && break
@@ -135,7 +136,7 @@ function anderson_salt!(lsol::LasingSol,
     end  # if m == 0
 
     if k == maxit  # iteration terminated by consuming maxit steps
-        init_lvar!(lvar, lsol, gp)
+        init_lvar!(lvar, lsol, gp, εc)
         lleq = norm_leq(lsol, lvar, gp)
         verbose && println(msgprefix * "k = $k: ‖leq‖/‖leq₀‖ = $(lleq/lleq₀)")
         @warn "Anderson reached maxit = $maxit and didn't converge."

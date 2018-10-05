@@ -52,8 +52,8 @@ export gen_γ, gen_γ′, gen_abs2γ, gen_abs2γ′, hole_burning!
 # AbsMatComplex.  On the other hand, the argument CC is read-only, so it is typed AbsMatNumber.
 
 # Generate the default gain curve of SALT, which describes two-level atoms.
-gen_γ(ωₐ::Real, γperp::Real) = ω::Number -> γperp / (ω - ωₐ + im * γperp)  # scalar
-gen_γ′(ωₐ::Real, γperp::Real) = ω::Number -> -γperp / (ω - ωₐ + im * γperp)^2  # scalar
+gen_γ(ω₀::Real, γperp::Real) = ω::Number -> γperp / (ω - ω₀ + im * γperp)  # scalar
+gen_γ′(ω₀::Real, γperp::Real) = ω::Number -> -γperp / (ω - ω₀ + im * γperp)^2  # scalar
 
 # Below, we define the formula for |γ|².  This can be easily calculated from γ, but the
 # users may accidentally evaluate γ(ω) for complex ω and take its squared absolute value.
@@ -61,63 +61,60 @@ gen_γ′(ωₐ::Real, γperp::Real) = ω::Number -> -γperp / (ω - ωₐ + im 
 # denominator when calculating the absolute value.  To prevent this unfortunate accident
 # from happening, we define a formula for |γ|² that accepts only real ω and ask the users to
 # use it.
-gen_abs2γ(ωₐ::Real, γperp::Real) = ω::Real -> γperp^2 / ((ω - ωₐ)^2 + γperp^2)  # scalar; note ω is real for this
-gen_abs2γ′(ωₐ::Real, γperp::Real) = ω::Real -> -2γperp^2 * (ω - ωₐ) / ((ω - ωₐ)^2 + γperp^2)^2  # scalar; note ω is real for this
+gen_abs2γ(ω₀::Real, γperp::Real) = ω::Real -> γperp^2 / ((ω - ω₀)^2 + γperp^2)  # scalar; note ω is real for this
+gen_abs2γ′(ω₀::Real, γperp::Real) = ω::Real -> -2γperp^2 * (ω - ω₀) / ((ω - ω₀)^2 + γperp^2)^2  # scalar; note ω is real for this
 
 # Parameters defining the SALT problem
-# Consider including CC to gp, if I am really going to use ωₐ for PML for all modes.
-mutable struct GainProfile{VC<:AbsVecComplex,VF<:AbsVecFloat}  # VC, VF can be PETSc vectors
+# Consider including CC to gp, if I am really going to use ω₀ for PML for all modes.
+mutable struct GainProfile{VF<:AbsVecFloat}  # VF can be PETSc vectors
     gain::Function  # gain curve
     gain′::Function  # derivative of gain curve
     abs2gain::Function  # squared absolute value of gain curve
     abs2gain′::Function  # derivative of squared absolute value of gain curve
-    εc::VC  # permittivity of cold cavity
     D₀::VF  # pump strength
-    function GainProfile{VC,VF}(gain::Function,
-                                gain′::Function,
-                                abs2gain::Function,
-                                abs2gain′::Function,
-                                εc::AbsVecNumber,
-                                D₀::AbsVecReal) where {VC<:AbsVecComplex,VF<:AbsVecFloat}
-        length(εc) == length(D₀) ||
-            throw(ArgumentError("legnth(εc) == $(length(εc)) and length(D₀) == $(length(D₀)) must be the same"))
+    function GainProfile{VF}(gain::Function,
+                             gain′::Function,
+                             abs2gain::Function,
+                             abs2gain′::Function,
+                             D₀::AbsVecReal) where {VF<:AbsVecFloat}
 
-        return new(gain, gain′, abs2gain, abs2gain′, εc, D₀)
+        return new(gain, gain′, abs2gain, abs2gain′, D₀)
     end
 end
 
-# # The following constructor avoids copying εc and D₀.
-# GainProfile(gain::Function, gain′::Function, abs2gain::Function, abs2gain′::Function, εc::VC, D₀::VF) where {VC<:AbsVecComplex,VF<:AbsVecFloat} =
-#     GainProfile{VC,VF}(gain, gain′, abs2gain, abs2gain′, εc, D₀)
+GainProfile(ω₀::Real, γperp::Real, D₀::AbsVecReal) = GainProfile(gen_γ(ω₀,γperp), gen_γ′(ω₀,γperp), gen_abs2γ(ω₀,γperp), gen_abs2γ′(ω₀,γperp), D₀)
+GainProfile(ω₀::Real, γperp::Real, vtemp::AbsVec) =  GainProfile(gen_γ(ω₀,γperp), gen_γ′(ω₀,γperp), gen_abs2γ(ω₀,γperp), gen_abs2γ′(ω₀,γperp), vtemp::AbsVec)
+GainProfile(ω₀::Real, γperp::Real, N::Integer) = GainProfile(gen_γ(ω₀,γperp), gen_γ′(ω₀,γperp), gen_abs2γ(ω₀,γperp), gen_abs2γ′(ω₀,γperp), N::Integer)
 
-# The following constructor copies εc and D₀.
-function GainProfile(gain::Function, gain′::Function, abs2gain::Function, abs2gain′::Function, εc::AbsVecNumber, D₀::AbsVecReal)
-    εc_new = similar(εc,CFloat)
-    copyto!(εc_new, εc)
+# # The following constructor avoids copying D₀.
+# GainProfile(gain::Function, gain′::Function, abs2gain::Function, abs2gain′::Function, D₀::VF) where {VF<:AbsVecFloat} =
+#     GainProfile{VC,VF}(gain, gain′, abs2gain, abs2gain′, D₀)
 
+# The following constructor copies D₀.
+function GainProfile(gain::Function, gain′::Function, abs2gain::Function, abs2gain′::Function, D₀::AbsVecReal)
     D₀_new = similar(D₀,Float)
     copyto!(D₀_new, D₀)
 
-    return GainProfile{typeof(εc_new), typeof(D₀_new)}(gain, gain′, abs2gain, abs2gain′, εc_new, D₀_new)
+    return GainProfile{typeof(D₀_new)}(gain, gain′, abs2gain, abs2gain′, D₀_new)
 end
 
 # To do: check if the following works for vtemp of PETSc vector type.
-GainProfile(gain::Function, gain′::Function, abs2gain::Function, abs2gain′::Function, vtemp::AbsVec) =  # template vector with N entries
-    GainProfile(gain, gain′, abs2gain, abs2gain′, similar(vtemp,CFloat).=0, similar(vtemp,Float).=0)
+GainProfile(ω, vtemp::AbsVec) =  # template vector with N entries
+    GainProfile(gain, gain′, abs2gain, abs2gain′, similar(vtemp,Float))
 GainProfile(gain::Function, gain′::Function, abs2gain::Function, abs2gain′::Function, N::Integer) =
     GainProfile(gain, gain′, abs2gain, abs2gain′, VecFloat(undef,N))
 
-
 # Evaluate 1 + hole-burning term = 1 + ∑|γaψ|².
 function hole_burning!(hb::AbsVecNumber,  # output
-                       abs2γ::AbsVecReal,  # vector of values of gain curve at lasing frequencies of modes
+                       ω::AbsVecReal,  # vector of lasing frequencies
                        a²::AbsVecReal,  # vector of squared amplitudes of unnormalized eigenmodes
-                       ψ::AbsVec{<:AbsVecNumber})  # vector of normalized eigenmodes
+                       ψ::AbsVec{<:AbsVecNumber},  # vector of normalized eigenmodes
+                       abs2gain::Function)  # function that takes ω and produces |γ(ω)|²
     hb .= 1  # initialize
     for m = 1:length(a²)
         if a²[m] ≠ 0
             # @info "a²[$m] = $(a²[m]), ‖ψ[$m]‖ = $(norm(ψ[m]))"
-            hb .+=  (abs2γ[m] * a²[m]) .* abs2.(ψ[m])
+            hb .+=  (abs2gain(ω[m]) * a²[m]) .* abs2.(ψ[m])
         end
     end
     # @info "‖hb‖ = $(norm(hb))"
