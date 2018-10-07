@@ -1,4 +1,5 @@
 export pump!, simulate!, find_threshold!
+export TR_NEWTON, TA_NEWTON, MAXIT_NEWTON, M_ANDERSON, TR_ANDERSON, TA_ANDERSON
 
 const TA_NEWTON = Base.rtoldefault(Float)  # absolute tolerance for Newton method to solve nonlasing equation
 const TR_NEWTON = sqrt(TA_NEWTON)  # relative tolerance for Newton method to solve nonlasing equation
