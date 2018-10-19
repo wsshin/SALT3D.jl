@@ -262,6 +262,10 @@ LasingVar(lsd_temp::LinearSolverData, vtemp::AbsVec, M::Integer) =
     LasingVar(∆LasingSol(vtemp, M), [LasingModalVar(lsd_temp, vtemp) for m = 1:M], LasingReducedVar(vtemp, M), LasingConstraint(M), false)
 LasingVar(lsd_temp::LinearSolverData, N::Integer, M::Integer) = LasingVar(lsd_temp, VecFloat(undef,N), M)
 
+# Initialize the variables that are NOT specific to the SALT equation for a specific lasing
+# mode.  These variables are constructed either by summing up the contributions from all
+# lasing modes, or by storing the contributions of the individual lasing modes separately
+# without summing them up.
 function init_reduced_var!(rvar::LasingReducedVar, ∆lsol::∆LasingSol, lsol::LasingSol, gp::GainProfile)
     hb = lsol.vtemp  # temporary storage for hole-burning term
     hole_burning!(hb, lsol.ω, lsol.a², lsol.ψ, gp.abs2gain)
@@ -282,6 +286,7 @@ function init_reduced_var!(rvar::LasingReducedVar, ∆lsol::∆LasingSol, lsol::
 end
 
 
+# Initialize the variables that are specific to the SALT equation for a specific lasing mode.
 function init_modal_var!(mvar::LasingModalVar,
                          m::Integer,  # index of lasing mode
                          lsol::LasingSol,
