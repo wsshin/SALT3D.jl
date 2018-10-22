@@ -177,8 +177,8 @@ mutable struct LasingModalVar{LSD<:LinearSolverData,VC<:AbsVecComplex}  # VC can
     ω²γψ::VC
     ∂f∂ω::VC
     function LasingModalVar{LSD,VC}(lsd::LSD,
-                                   ω²γψ::AbsVecNumber,
-                                   ∂f∂ω::AbsVecNumber) where {LSD<:LinearSolverData,VC<:AbsVecComplex}
+                                    ω²γψ::AbsVecNumber,
+                                    ∂f∂ω::AbsVecNumber) where {LSD<:LinearSolverData,VC<:AbsVecComplex}
         length(ω²γψ)==length(∂f∂ω) ||
             throw(ArgumentError("length(ω²γψ) = $(length(ω²γψ)) and length(∂f∂ω) = $(length(∂f∂ω)) must be the same."))
         N = length(ω²γψ)
