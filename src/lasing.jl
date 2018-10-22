@@ -48,8 +48,8 @@ mutable struct LasingSol{VC<:AbsVecComplex}  # VC can be PETSc vector
                            iₐ::AbsVecInteger,
                            vtemp::AbsVecNumber) where {VC<:AbsVecComplex}
         length(ω)==length(a²)==length(ψ)==length(iₐ) ||
-            throw(ArgumentError("length(ω) = $(length(ω)), length(a²) = $(length(a²)),
-                                 length(ψ) = $(length(ψ)), length(iₐ) = $(length(iₐ)) must be the same."))
+            throw(ArgumentError("length(ω) = $(length(ω)), length(a²) = $(length(a²)), " *
+                                 "length(ψ) = $(length(ψ)), length(iₐ) = $(length(iₐ)) must be the same."))
 
         M = length(ψ)
         if M > 0
