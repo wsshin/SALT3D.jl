@@ -438,7 +438,7 @@ end
 
 
 # Move lsolₘ by ∆lsolₘ.
-function apply_∆solₘ!(lsol::LasingSol,
+function apply_∆ψₘ!(lsol::LasingSol,
                       ∆lsol::∆LasingSol,
                       m::Integer,  # index of lasing mode of interest
                       mvar::LasingModalVar,  # ∆ω and ∆a² must be already updated; see update_∆lsol
@@ -483,12 +483,12 @@ function apply_∆solₘ!(lsol::LasingSol,
     # ψ[iₐ]≈1 || @warn "lasing mode m = $m is slightly nonnormal: |ψ[iₐ]-1| = $(abs(ψ[iₐ]-1)).  The mode will be renormalized."
     ψ ./= ψ[iₐ]
 
-    # The following could have been updated before this function, because all the ω- and a²-
-    # dependent quantities were already prepared.  The main purpose of the present function
-    # is to update ψ[m].  However, because the present function is called for all m, we
-    # update ω[m] and a²[m] here as well.
-    lsol.ω[m] += ∆ω[m]
-    lsol.a²[m] += ∆a²[m]
+    # # The following could have been updated before this function, because all the ω- and a²-
+    # # dependent quantities were already prepared.  The main purpose of the present function
+    # # is to update ψ[m].  However, because the present function is called for all m, we
+    # # update ω[m] and a²[m] here as well.
+    # lsol.ω[m] += ∆ω[m]
+    # lsol.a²[m] += ∆a²[m]
 
     return nothing
 end
@@ -537,12 +537,18 @@ function update_lsol_impl!(lsol::LasingSol,
         ∆lsol.∆a²[m] = ∆ωa²[2c]
     end
 
-    # Update ∆ψ.
+    # Update ψ.
     # @info "lsol.ω = $(lsol.ω), lsol.a² = $(lsol.a²), lsol.m_active = $(lsol.m_active)"
     for m = lsol.m_active
         # @info "before apply: ‖lsol.ψ[$m]‖ = $(norm(lsol.ψ[m]))"
-        apply_∆solₘ!(lsol, ∆lsol, m, mvar_vec[m], rvar)
+        apply_∆ψₘ!(lsol, ∆lsol, m, mvar_vec[m], rvar)
         # @info "after apply: ‖lsol.ψ[$m]‖ = $(norm(lsol.ψ[m]))"
+    end
+
+    # Update ω and a².
+    for m = lsol.m_active
+        lsol.ω[m] += ∆lsol.∆ω[m]
+        lsol.a²[m] += ∆lsol.∆a²[m]
     end
 
     return nothing
