@@ -296,8 +296,7 @@ function init_modal_var!(mvar::LasingModalVar,
                          rvar::LasingReducedVar,
                          gp::GainProfile,
                          εc::AbsVecComplex)
-    isreal(lsol.ω[m]) || throw(ArgumentError("lsol.ω[$m] = $(lsol.ω[m]) must be real."))
-    ω = real(lsol.ω[m])
+    ω = lsol.ω[m]::Real  # test if type of ω is real
 
     γ = gp.gain(ω)
     γ′ = gp.gain′(ω)
@@ -381,8 +380,6 @@ function set_constraint!(cst::LasingConstraint,
 
     vtemp1 = lsol.vtemp
     vtemp2 = ∆lsol.vtemp
-
-    N = length(ψ)
 
     # Retrieve necessary variables for constructing the constraint.
     ∆D = rvar.∆D
@@ -483,7 +480,7 @@ function apply_∆solₘ!(lsol::LasingSol,
 
     # Normalize ψ just in case ψ[iₐ] ≠ 1.  (Do we need to unnormalize a²?)
     iₐ = lsol.iₐ[m]
-    ψ[iₐ]≈1 || @warn "lasing mode m = $m is slightly nonnormal: |ψ[iₐ]-1| = $(abs(ψ[iₐ]-1)).  The mode will be renormalized."
+    # ψ[iₐ]≈1 || @warn "lasing mode m = $m is slightly nonnormal: |ψ[iₐ]-1| = $(abs(ψ[iₐ]-1)).  The mode will be renormalized."
     ψ ./= ψ[iₐ]
 
     # The following could have been updated before this function, because all the ω- and a²-
