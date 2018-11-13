@@ -73,10 +73,13 @@ LasingSol(N::Integer, M::Integer) = LasingSol(VecFloat(undef,N), M)
 
 Base.length(lsol::LasingSol) = length(lsol.ψ)
 
+# Note that this function changes iₐ and a².
 function LinearAlgebra.normalize!(lsol::LasingSol)
     for m = lsol.m_active
         ψ = lsol.ψ[m]
-        iₐ = lsol.iₐ[m]
+        iₐ = argmax(abs, ψ)
+        lsol.iₐ[m] = iₐ
+        lsol.a²[m] *= abs2(ψ[iₐ])
         ψ ./= ψ[iₐ]  # make ψ[iₐ] = 1
     end
 end

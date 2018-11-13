@@ -19,6 +19,7 @@ const MAXIT_THRESHOLD = 50  # maximum number of bisection steps
 function solve_leq!(lsol, lvar, gp, εc; m=M_ANDERSON, τr=TR_ANDERSON, τa=TA_ANDERSON, maxit=MAXIT_ANDERSON, verbose=true)
     println("  Solve lasing eq. with modes m = $(lsol.m_active) where aₗ²[m=1:$(length(lsol))] = $(lsol.a²):")
 
+    normalize!(lsol)
     t_anderson = @elapsed n_anderson, ll, ll₀ = anderson_salt!(lsol, lvar, gp, εc, m=m, τr=τr, τa=τa, maxit=maxit, verbose=verbose)
 
     # verbose && println("  No. of Anderson steps = $k, ‖leq‖ = $ll, ωₗ = $(lsol.ω), aₗ² = $(lsol.a²)")
@@ -50,6 +51,7 @@ function solve_nleq!(nlsol::NonlasingSol,
 
     println("  Solve nonlasing eq. with modes m = $(nlsol.m_active) where ωₙₗ[m=1:$(length(nlsol))] = $(string(nlsol.ω)[17:end]):")
 
+    normalize!(nlsol)
     for m = nlsol.m_active
         # Newton method for nonlasing modes
         t_newton = @elapsed begin

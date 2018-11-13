@@ -39,23 +39,27 @@ NonlasingSol(ω::AbsVecNumber, ψ::AbsVec{VC}, iₐ::AbsVecInteger, vtemp::VC) w
 NonlasingSol(ω::AbsVecNumber, Ψ::AbsMatComplex, iₐ::AbsVecInteger) =
     ((N,M) = size(Ψ); NonlasingSol(ω, [Ψ[:,m] for m = 1:M], iₐ, similar(Ψ,N)))
 
-NonlasingSol(ω::AbsVecNumber, ψ::AbsVec{<:AbsVecComplex}) = NonlasingSol(ω, ψ, argmax.(abs, ψ), similar(ψ[1]))  # iₐ is set here
+NonlasingSol(ω::AbsVecNumber, ψ::AbsVec{<:AbsVecComplex}) = NonlasingSol(ω, ψ, zeros(Int,length(ω)), similar(ψ[1]))  # iₐ is set here
 NonlasingSol(ω::AbsVecNumber, Ψ::AbsMatComplex) = (M = length(ω); NonlasingSol(ω, [Ψ[:,m] for m = 1:M]))
 
 
 # To do: check if the following works for vtemp of PETSc vector type.
 NonlasingSol(vtemp::AbsVec, M::Integer) =  # vtemp has N entries
-    NonlasingSol(zeros(CFloat,M), [similar(vtemp,CFloat).=0 for m = 1:M], VecInt(M), similar(vtemp,CFloat))
+    NonlasingSol(zeros(CFloat,M), [similar(vtemp,CFloat).=0 for m = 1:M], zeros(Int,M), similar(vtemp,CFloat))
 NonlasingSol(N::Integer, M::Integer) = NonlasingSol(VecFloat(undef,N), M)
 
 Base.length(nlsol::NonlasingSol) = length(nlsol.ψ)
 
+# Note that this function changes iₐ.
 function LinearAlgebra.normalize!(nlsol::NonlasingSol)
     for m = nlsol.m_active
         ψ = nlsol.ψ[m]
-        iₐ = nlsol.iₐ[m]
+        iₐ = argmax(abs, ψ)
+        nlsol.iₐ[m] = iₐ
         ψ ./= ψ[iₐ]  # make ψ[iₐ] = 1
     end
+
+    return nothing
 end
 
 # nonlasing reduced bar: D
