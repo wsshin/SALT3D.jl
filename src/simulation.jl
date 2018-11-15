@@ -14,13 +14,18 @@ const TA_THRESHOLD = eps(Float)  # relative tolerance of bisection method
 const TR_THRESHOLD = sqrt(TA_THRESHOLD)  # relative tolerance of bisection method
 const MAXIT_THRESHOLD = 50  # maximum number of bisection steps
 
-# solve_leq! is just a new name of anderson_salt!.  init_lval!, norm_leq, and update_lsol!
-# are called inside anderson_salt!.
+# solve_leq! is just a wrapper of anderson!.  init_lval!, norm_leq, and update_lsol! are called
+# inside anderson!.
 function solve_leq!(lsol, lvar, gp, εc; m=M_ANDERSON, τr=TR_ANDERSON, τa=TA_ANDERSON, maxit=MAXIT_ANDERSON, verbose=true)
     println("  Solve lasing eq. with modes m = $(lsol.m_active) where aₗ²[m=1:$(length(lsol))] = $(lsol.a²):")
 
+    # Construct the objects to use in the Anderson acceleration.
+    x = lsol2rvec(lsol)
+    fpfun! = create_fpfun(lsol, lvar, gp)
+    normfun! = create_normfun(lsol, lvar, gp, εc, verbose=verbose)
+
     normalize!(lsol)
-    t_anderson = @elapsed n_anderson, ll, ll₀ = anderson_salt!(lsol, lvar, gp, εc, m=m, τr=τr, τa=τa, maxit=maxit, verbose=verbose)
+    t_anderson = @elapsed n_anderson, ll, ll₀ = anderson!(fpfun!, x, norm=normfun!, m=m, τr=τr, τa=τa, maxit=maxit)
 
     # verbose && println("  No. of Anderson steps = $k, ‖leq‖ = $ll, ωₗ = $(lsol.ω), aₗ² = $(lsol.a²)")
     verbose && @printf("    No. of Anderson steps = %d (%f sec), ‖leq‖ = %.3e, ‖leq‖/‖leq₀‖ = %.3e\n", n_anderson, t_anderson, ll, ll/ll₀)
@@ -34,7 +39,7 @@ end
 # The default value of D = gp.D₀ is when the hole-burning term is zero (i.e., when D = D₀).
 # Otherwise, pass LasingVar.LasingReducedVar.D for the argument D.  LasingVar must be
 # initialized by init_lvar! in order to hold a properly calculated popolation inversion D.
-# This is typically done by norm_leq, which is typically executed by calling anderson_salt!,
+# This is typically done by norm_leq, which is typically executed by calling anderson!,
 # which is called solve_leq! in the present context.
 function solve_nleq!(nlsol::NonlasingSol,
                      nlvar::NonlasingVar,

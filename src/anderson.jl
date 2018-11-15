@@ -1,55 +1,91 @@
 # To do: pass the storages f, ∆X, ∆F, Q, β.  Also, think about ways to reduce this memory.
 
+# To use andersonaccel!, implement anderson_SALT! that accepts SALTSol as an initial guess
+# and g! that takes SALTSol and returns SALTSol.  anderson_SALT! must create a version of g!
+# that takes and returns vectors using CatViews.
+
+# I will need to implement `reinterpret` for PETSc vectors to view complex PETSc vectors as
+# a real PETSc vector.
+function lsol2rvec(lsol::LasingSol)
+    m_active = lsol.m_active
+    ψr = reinterpret.(Ref(Float), lsol.ψ[lsol.m_active])
+    # ψr = lsol.ψ[lsol.m_active]  # complex version
+
+    # ωa² = lsol.ω[lsol.m_active] .+ im .* lsol.a²[lsol.m_active]
+    # return CatView(ωa², lsol.ψ[lsol.m_active]...)
+    return CatView(lsol.ω[lsol.m_active], lsol.a²[lsol.m_active], ψr...)
+    # return CatView(ψr...)
+    # return CatView(lsol.ω[lsol.m_active], lsol.a²[lsol.m_active])
+end
+
+function create_fpfun(lsol::LasingSol, lvar::LasingVar, gp::GainProfile)
+    # When x is created from lsol by lsol2rvec, x points to the memory of lsol, so the update in
+    # lsol is automatically reflected in x.
+    fpfun!(y, x) = update_lsol!(lsol, lvar, gp)  # x is updated to g(xₖ) (but this x is not xₖ₊₁)
+
+    return fpfun!
+end
+
+function create_normfun(lsol::LasingSol, lvar::LasingVar, gp::GainProfile, εc::AbsVecComplex;
+                        verbose::Bool=true, msgprefix::String="    ")
+    function normfun!(x::AbsVec{<:Number}, k::Integer=0, lleq₀::Real=Inf)
+        init_lvar!(lvar, lsol, gp, εc)
+        lleq = norm_leq(lsol, lvar, gp)
+        if verbose
+            k==0 ? println(msgprefix * "Initial residual norm: ‖leq₀‖ = $lleq₀") :
+                   println(msgprefix * "k = $k: ‖leq‖/‖leq₀‖ = $(lleq/lleq₀)")
+        end
+
+        return lleq
+    end
+
+    return normfun!
+end
+
+
 # Solve the fixed-point equation g(x) = x to given relative and absolute tolerances,
 # returning the solution x, via Anderson acceleration of a fixed-point iteration starting at
 # a given initial x (which must be of the correct type to hold the result).
 #
+# x must be set x = lsol2rvec(lsol) outside.
+#
 # This implementation operates in-place as much as possible.
-function anderson_salt!(lsol::LasingSol,
-                        lvar::LasingVar,
-                        gp::GainProfile,
-                        εc::AbsVecComplex;
-                        m::Integer=2, # number of additional x's kept in algorithm; m = 0 means unaccelerated iteration
-                        τr::Real=1e-4,  # relative tolerance; consider using Base.rtoldefault(Float)
-                        τa::Real=1e-8,  # absolute tolerance
-                        maxit::Int=typemax(Int),  # number of maximum number of iteration steps
-                        verbose::Bool=true,
-                        msgprefix::String="    ")
+# This function will be removed if an external implementation of the Anderson acceleration is used.
+function anderson!(g!::Function,  # called by g!(y,x); overwrites a given output vector y with g(x)
+                   x::AbsVec{T};  # initial guess; overwritten at each iteration step (note g! itself does not overwrite x)
+                   norm=(x::AbsVec{T}, k::Integer, l₀::Real)->norm(x), # stopping criterion: norm(Δx) ≤ τa + τr*norm(x)
+                   m::Integer=2, # number of additional x's kept in algorithm; m = 0 means unaccelerated iteration
+                   τr::Real=Base.rtoldefault(real(T)),  # relative tolerance; consider using Base.rtoldefault(Float)
+                   τa::Real=eps(real(T)),  # absolute tolerance
+                   maxit::Int=typemax(Int)) where {T<:Number}  # number of maximum number of iteration steps
     m ≥ 0 || throw(ArgumentError("m = $m must be ≥ 0."))
     τr ≥ 0 || throw(ArgumentError("τr = $τr must be ≥ 0."))
     τa ≥ 0 || throw(ArgumentError("τa = $τa must be ≥ 0."))
     maxit ≥ 0 || throw(ArgumentError("maxit = $maxit must be ≥ 0."))
 
     k = 0
-    init_lvar!(lvar, lsol, gp, εc)
-    lleq₀ = norm_leq(lsol, lvar, gp)
-    # verbose && println(msgprefix * "Anderson acceleration:")
-    verbose && println(msgprefix * "Initial residual norm: ‖leq₀‖ = $lleq₀")
-    lleq₀ ≤ τa && return k, lleq₀, lleq₀  # lsol.m_active = [] falls to this as well
+    l₀ = norm(x)
+    l₀ ≤ τa && return k, l₀, l₀  # lsol.m_active = [] falls to this as well
 
-    τ = max(τr*lleq₀, τa)
+    τ = max(τr*l₀, τa)
 
-    x = lsol2rvec(lsol)
     n = length(x)
-    m ≤ n || throw(ArgumentError("m = $m must be > length(lsol2rvec(lsol)) = $n."))
+    m ≤ n || throw(ArgumentError("m = $m must be > length(x) = $n."))
 
     # Storing xold is needed only for the m ≠ 0 case, so executing the following block only
     # for m ≠ 0 would have saved 1 allocation.  However, putting the following block here
     # increase code readability, because doing update_lsol! right after norm_leq is an idiom.
     # m ≠ 0 is rarely used anyway.
-    T = eltype(x)
     xold = Vector{T}(undef, n)
     xold .= x  # xold = x₀
-    update_lsol!(lsol, lvar, gp)  # x is updated to x₁ = g(x₀)
+    g!(x, xold)  # x is updated to x₁ = g(x₀)
     # Note we need at least two x's to perform the m ≠ 0 Anderson acceleration.
 
     if m == 0 # simple fixed-point iteration (no memory)
         while (k+=1) ≤ maxit
-            init_lvar!(lvar, lsol, gp, εc)
-            lleq = norm_leq(lsol, lvar, gp)
-            verbose && println(msgprefix * "k = $k: ‖leq‖/‖leq₀‖ = $(lleq/lleq₀)")
-            lleq ≤ τ && break
-            update_lsol!(lsol, lvar, gp)
+            l = norm(x, k, l₀)
+            l ≤ τ && break
+            g!(x, xold)
         end
     else  # m ≠ 0
         # Pre-allocate all of the arrays we will need.  The goal is to allocate once and re-use
@@ -85,14 +121,12 @@ function anderson_salt!(lsol::LasingSol,
         #
         # Then we know ∆xₖ₋₁ and ∆fₖ₋₁, which are needed for the Anderson acceleration.
         while (k+=1) ≤ maxit
-            init_lvar!(lvar, lsol, gp, εc)
-            lleq = norm_leq(lsol, lvar, gp)
-            verbose && println(msgprefix * "k = $k: ‖leq‖/‖leq₀‖ = $(lleq/lleq₀)")
-            lleq ≤ τ && break
+            l = norm(x, k, l₀)
+            l ≤ τ && break
 
             # Evaluate g(xₖ).
             xold .= x  # xold = xₖ
-            update_lsol!(lsol, lvar, gp)  # x is updated to g(xₖ) (but this x is not xₖ₊₁)
+            g!(x, xold)
 
             # Prepare the least squares problem.
             for i = 1:n
@@ -136,11 +170,9 @@ function anderson_salt!(lsol::LasingSol,
     end  # if m == 0
 
     if k == maxit  # iteration terminated by consuming maxit steps
-        init_lvar!(lvar, lsol, gp, εc)
-        lleq = norm_leq(lsol, lvar, gp)
-        verbose && println(msgprefix * "k = $k: ‖leq‖/‖leq₀‖ = $(lleq/lleq₀)")
+        l = norm(x, k, l₀)
         @warn "Anderson reached maxit = $maxit and didn't converge."
     end
 
-    return k, lleq, lleq₀
+    return k, l, l₀
 end

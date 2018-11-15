@@ -349,16 +349,16 @@ end
 
 
 function norm_leq_impl(lsol::LasingSol, mvar_vec::AbsVec{<:LasingModalVar})
-    leq² = 0.0
+    leq = 0.0
     b = lsol.vtemp
     for m = lsol.m_active
         lsd = mvar_vec[m].lsd
         ψ = lsol.ψ[m]
         linapply!(b, lsd, ψ)  # b = A * ψ
-        leq² = max(leq², sum(abs2,b))  # 2-norm for each mode, 1-norm between modes
+        leq = max(leq, norm(b))  # 2-norm for each mode, ∞-norm between modes
     end
 
-    return √leq²  # return 0.0 if lsol.m_active is empty
+    return leq  # return 0.0 if lsol.m_active is empty
 end
 
 function norm_leq(lsol::LasingSol, lvar::LasingVar, gp::GainProfile)
@@ -552,22 +552,4 @@ function update_lsol_impl!(lsol::LasingSol,
     end
 
     return nothing
-end
-
-
-# To use andersonaccel!, implement anderson_SALT! that accepts SALTSol as an initial guess
-# and g! that takes SALTSol and returns SALTSol.  anderson_SALT! must create a version of g!
-# that takes and returns vectors using CatViews.
-
-# I will need to implement `reinterpret` for PETSc vectors to view complex PETSc vectors as
-# a real PETSc vector.
-
-function lsol2rvec(lsol::LasingSol)
-    m_active = lsol.m_active
-    ψr = reinterpret.(Ref(Float), lsol.ψ[lsol.m_active])
-    # ψr = lsol.ψ[lsol.m_active]  # complex version
-
-    return CatView(lsol.ω[lsol.m_active], lsol.a²[lsol.m_active], ψr...)
-    # return CatView(ψr...)
-    # return CatView(lsol.ω[lsol.m_active], lsol.a²[lsol.m_active])
 end
