@@ -11,9 +11,13 @@ function lsol2rvec(lsol::LasingSol)
     ψr = reinterpret.(Ref(Float), lsol.ψ[lsol.m_active])
     # ψr = lsol.ψ[lsol.m_active]  # complex version
 
+    # # For the Anderson in the complex domain
     # ωa² = lsol.ω[lsol.m_active] .+ im .* lsol.a²[lsol.m_active]
     # return CatView(ωa², lsol.ψ[lsol.m_active]...)
+
+    # For the Anderson in the real domain
     return CatView(lsol.ω[lsol.m_active], lsol.a²[lsol.m_active], ψr...)
+
     # return CatView(ψr...)
     # return CatView(lsol.ω[lsol.m_active], lsol.a²[lsol.m_active])
 end
@@ -21,7 +25,15 @@ end
 function create_fpfun(lsol::LasingSol, lvar::LasingVar, gp::GainProfile)
     # When x is created from lsol by lsol2rvec, x points to the memory of lsol, so the update in
     # lsol is automatically reflected in x.
-    fpfun!(y, x) = update_lsol!(lsol, lvar, gp)  # x is updated to g(xₖ) (but this x is not xₖ₊₁)
+    function fpfun!(y, x)
+        update_lsol!(lsol, lvar, gp)  # x is updated to g(xₖ) (but this x is not xₖ₊₁)
+
+        # Uncomment the following lines for the Anderson in the complex domain.
+        # @info "This is complex Anderson."
+        # y[1:length(lsol.m_active)] .= lsol.ω[lsol.m_active] .+ im .* lsol.a²[lsol.m_active]
+
+        return nothing
+    end
 
     return fpfun!
 end
