@@ -8,7 +8,7 @@
 # a real PETSc vector.
 function lsol2rvec(lsol::LasingSol)
     m_active = lsol.m_active
-    ψr = reinterpret.(Ref(Float), lsol.ψ[lsol.m_active])
+    ψr = reinterpret.(Ref(Float), @view(lsol.ψ[lsol.m_active]))
     # ψr = lsol.ψ[lsol.m_active]  # complex version
 
     # # For the Anderson in the complex domain
@@ -16,7 +16,7 @@ function lsol2rvec(lsol::LasingSol)
     # return CatView(ωa², lsol.ψ[lsol.m_active]...)
 
     # For the Anderson in the real domain
-    return CatView(lsol.ω[lsol.m_active], lsol.a²[lsol.m_active], ψr...)
+    return CatView(@view(lsol.ω[lsol.m_active]), @view(lsol.a²[lsol.m_active]), ψr...)
 
     # return CatView(ψr...)
     # return CatView(lsol.ω[lsol.m_active], lsol.a²[lsol.m_active])
@@ -28,7 +28,7 @@ function create_fpfun(lsol::LasingSol, lvar::LasingVar, gp::GainProfile)
     function fpfun!(y, x)
         update_lsol!(lsol, lvar, gp)  # x is updated to g(xₖ) (but this x is not xₖ₊₁)
 
-        # Uncomment the following lines for the Anderson in the complex domain.
+        # Uncomment the following two lines for the Anderson in the complex domain.
         # @info "This is complex Anderson."
         # y[1:length(lsol.m_active)] .= lsol.ω[lsol.m_active] .+ im .* lsol.a²[lsol.m_active]
 
@@ -97,6 +97,9 @@ function anderson!(g!::Function,  # called by g!(y,x); overwrites a given output
         while (k+=1) ≤ maxit
             l = norm(x, k, l₀)
             l ≤ τ && break
+
+            # Evaluate g(xₖ).
+            xold .= x  # xold = xₖ
             g!(x, xold)
         end
     else  # m ≠ 0
