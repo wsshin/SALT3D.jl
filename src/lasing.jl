@@ -165,7 +165,7 @@ LasingReducedVar(N::Integer, M::Integer) =  LasingReducedVar(VecFloat(undef,N), 
 
 # Lasing equation variables that are unique to each lasing mode
 mutable struct LasingModalVar{LSD<:LinearSolverData,VC<:AbsVecComplex}  # VC can be PETSc vector
-    # Consider adding ε as a field, in case the user wants to solve the "linear" eigenvalue
+    # Consider adding εeff as a field, in case the user wants to solve the "linear" eigenvalue
     # equation for some reason.
     lsd::LSD
     ω²γψ::VC
