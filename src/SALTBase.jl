@@ -19,6 +19,11 @@ const VecInt = Vector{Int}
 const VecFloat = Vector{Float}
 const VecComplex = Vector{CFloat}
 
+# Note that Function is abstract type, unlike Bool, Int, Float, CFloat.  When we have
+# functions f and g, [f, g] is Vector{Function}, but [f] or [g] is not.  I want to
+# store even the latter as Vector{Function}.
+const VecFun = Vector{Function}
+
 const AbsVecInt = AbsVec{Int}
 const AbsVecFloat = AbsVec{Float}
 const AbsVecComplex = AbsVec{CFloat}
@@ -26,6 +31,7 @@ const AbsVecComplex = AbsVec{CFloat}
 const AbsVecInteger = AbsVec{<:Integer}
 const AbsVecReal = AbsVec{<:Real}
 const AbsVecNumber = AbsVec{<:Number}
+const AbsVecFunction = AbsVec{<:Function}
 
 const MatFloat = Matrix{Float}
 const MatComplex = Matrix{CFloat}
@@ -50,9 +56,9 @@ abstract type LinearSolverData end
 # Each concrete SALT solver package (e.g., MaxwellSALT) must extend the following functions
 # to be used in lasing.jl and nonlasing.jl:
 function init_lsd!(lsd::LinearSolverData, ω::Number, ε::AbsVecNumber) end
-function linsolve!(x::AbsVecComplex, lsd::LinearSolverData, b::AbsVecComplex) end
-function linsolve_transpose!(x::AbsVecComplex, lsd::LinearSolverData, b::AbsVecComplex) end
-function linapply!(b::AbsVecComplex, lsd::LinearSolverData, x::AbsVecComplex) end
+function linsolve!(x::AbsVecComplex, lsd::LinearSolverData, b::AbsVecNumber) end
+function linsolve_transpose!(x::AbsVecComplex, lsd::LinearSolverData, b::AbsVecNumber) end
+function linapply!(b::AbsVecComplex, lsd::LinearSolverData, x::AbsVecNumber) end
 
 include("base.jl")
 include("gain.jl")

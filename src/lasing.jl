@@ -33,134 +33,121 @@ export LasingSol, LasingVar
 
 
 # Solutions to the lasing equation.
-mutable struct LasingSol{VC<:AbsVecComplex}  # VC can be PETSc vector
-    ω::VecFloat  # M real numbers: frequencies of modes (M = # of lasing modes)
+mutable struct LasingSol{VF<:AbsVecFloat,VC<:AbsVecComplex}  # VF and VC can be PETSc vectors with N entries
+    ω::VecFloat  # M real numbers: frequencies of modes (M = # of total modes, including both lasing and nonlasing)
     a²::VecFloat  # M real numbers: squared "amplitudes" of modes inside hole-burning term; this includes γ(ω)² factor
     ψ::Vector{VC}  # M complex vectors: normalized modes
+    abs2ψ::Vector{VF}  # M complex vectors: absolute squares of normalized modes
     iₐ::VecInt  # M integers: row indices where amplitudes are measured
-    vtemp::VC  # temporary storage for N complex numbers; note its contents can change at any point
+    vtemp::VC  # temporary storage for N complex numbers
+    wtemp::VC  # temporary storage for N complex numbers
     activated::VecBool  # activated[m] == true if mode m is just activated; used in simulate!
     active::VecBool  # active[m] == true if mode m is active (i.e., lasing)
     m_active::VecInt  # vector of active (i.e., lasing) mode indices; collection of m such that active[m] == true
-    function LasingSol{VC}(ω::AbsVecReal,
-                           a²::AbsVecReal,
-                           ψ::AbsVec{<:AbsVecNumber},
-                           iₐ::AbsVecInteger,
-                           vtemp::AbsVecNumber) where {VC<:AbsVecComplex}
-        length(ω)==length(a²)==length(ψ)==length(iₐ) ||
-            throw(ArgumentError("length(ω) = $(length(ω)), length(a²) = $(length(a²)), " *
-                                 "length(ψ) = $(length(ψ)), length(iₐ) = $(length(iₐ)) must be the same."))
+    function LasingSol{VF,VC}(ω::AbsVecReal,
+                              a²::AbsVecReal,
+                              ψ::AbsVec{<:AbsVecNumber},
+                              abs2ψ::AbsVec{<:AbsVecReal},
+                              iₐ::AbsVecInteger,
+                              vtemp::AbsVecComplex) where {VF<:AbsVecFloat,VC<:AbsVecComplex}
+        M = length(ω)
+        length(a²)==length(ψ)==length(abs2ψ)==length(iₐ)==M ||
+            throw(ArgumentError("length(ω) = $M, length(a²) = $(length(a²)), length(ψ) = $(length(ψ))" *
+                                 "length(abs2ψ) = $(length(abs2ψ)), length(iₐ) = $(length(iₐ)) must be the same."))
 
-        M = length(ψ)
-        if M > 0
-            N = length(ψ[1])
-            for m = 2:M
-                length(ψ[m]) == N ||
-                    throw(ArgumentError("length(ψ[$m]) = $(length(ψ[m])) and length(ψ[1]) = $N must be the same"))
-            end
+        N = length(vtemp)
+        for m = 1:M
+            length(ψ[m])==length(abs2ψ[m])==N ||
+                throw(ArgumentError("length(ψ[$m]) = $(length(ψ[m])), length(abs2ψ[$m]) = $(length(abs2ψ[m])), length(vtemp) = $N must be the same."))
         end
 
-        return new(ω, a², ψ, iₐ, vtemp, fill(false,M), fill(false,M), VecInt(undef,0))  # active[m]=false for all m: no mode is lasing
+        return new(ω, a², ψ, abs2ψ, iₐ, vtemp, copy(vtemp), fill(false,M), fill(false,M), VecInt(undef,0))  # active[m]=false for all m: no mode is lasing
     end
 end
-LasingSol(ω::AbsVecReal, a²::AbsVecReal, ψ::AbsVec{VC}, iₐ::AbsVecInteger, vtemp::VC) where {VC<:AbsVecComplex} =
-    LasingSol{VC}(ω, a², ψ, iₐ, vtemp)
+LasingSol(ω::AbsVecReal, a²::AbsVecReal, ψ::AbsVec{VC}, abs2ψ::AbsVec{VF}, iₐ::AbsVecInteger, vtemp::VC) where {VF<:AbsVecFloat,VC<:AbsVecComplex} =
+    LasingSol{VF,VC}(ω, a², ψ, abs2ψ, iₐ, vtemp)
 
 # To do: check if the following works for vtemp of PETSc vector type.
 LasingSol(vtemp::AbsVec, M::Integer) =  # vtemp has N entries
-    LasingSol(zeros(M), zeros(M), [similar(vtemp,CFloat).=0 for m = 1:M], zeros(Int,M), similar(vtemp,CFloat))
+    LasingSol(zeros(M), zeros(M), [similar(vtemp,CFloat).=0 for m = 1:M], [similar(vtemp,Float).=0 for m = 1:M], zeros(Int,M), similar(vtemp,CFloat))
 LasingSol(N::Integer, M::Integer) = LasingSol(VecFloat(undef,N), M)
 
-Base.length(lsol::LasingSol) = length(lsol.ψ)
+Base.length(lsol::LasingSol) = length(lsol.ω)  # number of total modes, including both lasing and nonlasing
+num_active(lsol::LasingSol) = sum(lsol.active)  # number of modes currently lasing
 
 
-# Note that this function changes iₐ and a².
+# Note that this function changes iₐ.  Therefore, this must not be called inside the
+# iteration for finding the solution for a given pump strength, because iₐ must be kept the
+# same for a given pump strength in order to solve the equations with the same normalization
+# conditions.
 function LinearAlgebra.normalize!(lsol::LasingSol)
     for m = lsol.m_active
         ψ = lsol.ψ[m]
-        iₐ = argmax(abs, ψ)
+        iₐ = argmax(abs2, ψ)
         lsol.iₐ[m] = iₐ
+
         lsol.a²[m] *= abs2(ψ[iₐ])
         ψ ./= ψ[iₐ]  # make ψ[iₐ] = 1
     end
 end
 
 
-# ∆'s of the solutions to the lasing equation
-mutable struct ∆LasingSol{VC<:AbsVecComplex}  # VC can be PETSc vector
-    ∆ω::VecFloat  # M real numbers (M = # of lasing modes)
-    ∆a²::VecFloat  # M real numbers
-    vtemp::VC  # temporary storage for N complex numbers; note its contents can change at any point
-    function ∆LasingSol{VC}(∆ω::AbsVecReal, ∆a²::AbsVecReal, vtemp::AbsVecNumber) where {VC<:AbsVecComplex}
-        length(∆ω)==length(∆a²) ||
-            throw(ArgumentError("length(∆ω) = $(length(∆ω)) and length(∆a²) = $(length(∆a²)) must be the same."))
-
-        return new(∆ω, ∆a², vtemp)
-    end
-end
-∆LasingSol(∆ω::AbsVecReal, ∆a²::AbsVecReal, vtemp::VC) where {VC<:AbsVecComplex} =
-    ∆LasingSol{VC}(∆ω, ∆a², vtemp)
-
-# To do: check if the following works for vtemp of PETSc vector type.
-∆LasingSol(vtemp::AbsVec, M::Integer) =  # vtemp has N entries
-    ∆LasingSol(VecFloat(undef,M), VecFloat(undef,M), similar(vtemp,CFloat))
-∆LasingSol(N::Integer, M::Integer) = ∆LasingSol(VecFloat(undef,N), M)
-
-
 # Lasing equation variables that are reduced from all lasing modes
-mutable struct LasingReducedVar{VF<:AbsVecFloat}  # VF can be PETSc vector
-    D::VF  # length-N vector: population inversion
-    D′::VF  # length-N vector: derivative of population inversion with respect to hole-burning term
-    ∇ₐ₂D::Vector{VF}  # length-M vector: each entry is derivative of D with respect to a²[m]
-    ∇ωD::Vector{VF}  # length-M vector: each entry is derivative of D with respect to ω[m]
-    function LasingReducedVar{VF}(D::AbsVecReal,
-                                  D′::AbsVecReal,
-                                  ∇ₐ₂D::AbsVec{<:AbsVecReal},
-                                  ∇ωD::AbsVec{<:AbsVecReal}) where {VF<:AbsVecFloat}
-        N = length(D)
-        length(D′)==N ||
-            throw(ArgumentError("length(D) = $(length(D)) and length(D′) = $(length(D′)) must be the same."))
-        M = length(∇ₐ₂D)
-        length(∇ωD)==M ||
-            throw(ArgumentError("length(∇ₐ₂D) = $(length(∇ₐ₂D)) and length(∇ωD) = $(length(∇ωD)) must be the same"))
-        for m = 1:M
-            length(∇ₐ₂D[m])==length(∇ωD[m])==N ||
-                throw(ArgumentError("length(∇ₐ₂D[$m]) = $(length(∇ₐ₂D[m])), length(∇ωD[$m]) = $(length(∇ωD[m]))
-                                     must be length(D) = $N must be the same."))
+mutable struct LasingReducedVar{VF<:AbsVecFloat}  # VF can be PETSc vector with N entries
+    D::Vector{VF}  # length-K vector: each entry is N-vector storing population inversion, where K is number of atomic classes
+    D′::Vector{VF}  # length-K vector: each entry is N-vector storing derivative of population inversion with respect to hole-burning term
+    function LasingReducedVar{VF}(D::AbsVec{<:AbsVecReal},
+                                  D′::AbsVec{<:AbsVecReal}) where {VF<:AbsVecFloat}
+        K = length(D)  # number of atomic classes
+        length(D′)==K ||
+            throw(ArgumentError("length(D) = $K and length(D′) = $(length(D′)) must be the same"))
+
+        if K ≥ 1
+            N = length(D[1])
+            for k = 1:K
+                length(D[k])==length(D′[k])==N ||
+                    throw(ArgumentError("length(D[$k]) = $(length(D[k])), length(D′[$k]) = $(length(D′[k])) must be $N."))
+            end
         end
 
-        return new(D, D′, ∇ₐ₂D, ∇ωD)
+        return new(D, D′)
     end
-
-    # # In the merged-loop algorithm, we assume ∆ψ = 0, so ∆D is always zero and not needed.
-    # function LasingReducedVar{VF}(D::AbsVecReal,
-    #                               D′::AbsVecReal,
-    #                               ∇ₐ₂D::AbsVec{<:AbsVecReal},
-    #                               ∇ωD::AbsVec{<:AbsVecReal}) where {VF<:AbsVecFloat
-    #     N = length(D)
-    #     length(D′)==N ||
-    #         throw(ArgumentError("length(D) = $(length(D)) and length(D′) = $(length(D′)) must be the same."))
-    #     M = length(∇ₐ₂D)
-    #     length(∇ωD)==M ||
-    #         throw(ArgumentError("length(∇ₐ₂D) = $(length(∇ₐ₂D)) and length(∇ωD) = $(length(∇ωD)) must be the same"))
-    #     for m = 1:M
-    #         length(∇ₐ₂D[m])==length(∇ωD[m])==N ||
-    #              throw(ArgumentError("length(∇ₐ₂D[$m]) = $(length(∇ₐ₂D[m])), length(∇ωD[$m]) = $(length(∇ωD[m]))
-    #                                   must be length(D) = $N must be the same."))
-    #     end
-    #
-    #     return new(D, D′, ∇ₐ₂D, ∇ωD)
-    # end
 end
-LasingReducedVar(D::AbsVecReal, D′::AbsVecReal, ∇ₐ₂D::AbsVec{VF}, ∇ωD::AbsVec{VF}) where {VF<:AbsVecFloat} =
-    LasingReducedVar{VF}(D, D′, ∇ₐ₂D, ∇ωD)
-# LasingReducedVar(D::AbsVecReal, D′::AbsVecReal, ∇ₐ₂D::AbsVec{VF}, ∇ωD::AbsVec{VF}) where {VF<:AbsVecReal} =
-#     LasingReducedVar{VF}(D, D′, ∇ₐ₂D, ∇ωD)
+LasingReducedVar(D::AbsVec{<:AbsVecReal}, D′::AbsVec{<:AbsVecReal}) = LasingReducedVar{eltype(D)}(D, D′)
 
 # To do: check if the following works for vtemp of PETSc vector type.
-LasingReducedVar(vtemp::AbsVec, M::Integer) =  # vtemp has N entries
-    LasingReducedVar(similar(vtemp,Float), similar(vtemp,Float), [similar(vtemp,Float) for m = 1:M], [similar(vtemp,Float) for m = 1:M])
-LasingReducedVar(N::Integer, M::Integer) =  LasingReducedVar(VecFloat(undef,N), M)
+LasingReducedVar(vtemp::AbsVec, K::Integer) = LasingReducedVar([similar(vtemp,Float).=0 for k=1:K], [similar(vtemp,Float).=0 for k=1:K])  # vtemp has N entries
+LasingReducedVar(N::Integer, K::Integer) =  LasingReducedVar(VecFloat(undef,N), K)
+
+LasingReducedVar(vtemp::AbsVec) = LasingReducedVar(vtemp, 1)  # K = 1
+LasingReducedVar(N::Integer) =  LasingReducedVar(N, 1)  # K = 1
+
+# Initialize the variables that are NOT specific to a specific lasing mode.  These variables
+# are constructed by summing up the contributions from all lasing modes.
+function init_reduced_var!(rvar::LasingReducedVar, lsol::LasingSol, gp::GainProfile)
+    # Update abs2ψ.
+    for m = lsol.m_active
+        lsol.abs2ψ[m] .= abs2.(lsol.ψ[m])
+    end
+
+    hb = lsol.vtemp  # temporary storage for hole-burning term
+    for k = 1:length(gp)  # atomic classes
+        # Calculate the (1 + hole-burning term) for atomic class k.
+        abs2γ = gp.abs2gain[k]  # |γ²| function for atomic class k
+        hole_burning!(hb, abs2γ, lsol.ω, lsol.a², lsol.abs2ψ)
+
+        # Calculate the population inversion and the derivative of the population inversion
+        # for the class-k atoms.
+        #
+        # hb is a complex vector storing real, and it is faster to take its real part first
+        # and perform the further calculation on it.
+        wt = gp.wt[k]  # weight function for atomic class k
+        rvar.D[k] .= wt.(gp.D₀) ./ real.(hb)
+        rvar.D′[k] .= (-1.0) .* wt.(gp.D₀) ./ abs2.(real.(hb))
+    end
+
+    return nothing
+end
 
 
 # Lasing equation variables that are unique to each lasing mode
@@ -168,154 +155,88 @@ mutable struct LasingModalVar{LSD<:LinearSolverData,VC<:AbsVecComplex}  # VC can
     # Consider adding ε as a field, in case the user wants to solve the "linear" eigenvalue
     # equation for some reason.
     lsd::LSD
-    ω²γψ::VC
     ∂f∂ω::VC
-    function LasingModalVar{LSD,VC}(lsd::LSD,
-                                    ω²γψ::AbsVecNumber,
-                                    ∂f∂ω::AbsVecNumber) where {LSD<:LinearSolverData,VC<:AbsVecComplex}
-        length(ω²γψ)==length(∂f∂ω) ||
-            throw(ArgumentError("length(ω²γψ) = $(length(ω²γψ)) and length(∂f∂ω) = $(length(∂f∂ω)) must be the same."))
-        N = length(ω²γψ)
-
-        return new(lsd, ω²γψ, ∂f∂ω)
-    end
 end
-LasingModalVar(lsd::LSD, ω²γψ::VC, ∂f∂ω::VC) where {LSD<:LinearSolverData,VC<:AbsVecComplex} =
-    LasingModalVar{LSD,VC}(lsd, ω²γψ, ∂f∂ω)
 
 # To do: check if the following works for vtemp of PETSc vector type.
-LasingModalVar(lsd_temp::LinearSolverData, vtemp::AbsVec) =  # vtemp has N entries
-    LasingModalVar(similar(lsd_temp), similar(vtemp,CFloat), similar(vtemp,CFloat))
+LasingModalVar(lsd_temp::LinearSolverData, vtemp::AbsVec) =  # for, e.g., PETSc vector vtemp; vtemp has N entries
+    LasingModalVar(similar(lsd_temp), similar(vtemp,CFloat))
+
 LasingModalVar(lsd_temp::LinearSolverData, N::Integer) =
-    LasingModalVar(similar(lsd_temp), VecComplex(undef,N), VecComplex(undef,N))
+    LasingModalVar(similar(lsd_temp), VecComplex(undef,N))
+
+
+# Initialize the variables that are specific to a specific lasing mode.
+function init_modal_var!(mvar::LasingModalVar,
+                         m::Integer,  # index of lasing mode
+                         lsol::LasingSol,
+                         D::AbsVec{<:AbsVecFloat},
+                         gp::GainProfile,
+                         εc::AbsVecComplex)
+    init_modal_var_impl!(mvar.lsd, mvar.∂f∂ω, lsol.vtemp, lsol.ω[m], lsol.ψ[m], D, gp, εc)
+end
+
+# This is used in nonlasing.jl as well.
+function init_modal_var_impl!(lsd::LinearSolverData,
+                              ∂f∂ω::AbsVecComplex,
+                              vtemp::AbsVecComplex,
+                              ω::Number,
+                              ψ::AbsVecComplex,
+                              D::AbsVec{<:AbsVecFloat},
+                              gp::GainProfile,
+                              εc::AbsVecComplex)
+    K = length(gp)  # number of atomic classes
+    γ = gp.gain  # K-vector whose kth entry is γ function of atomic class k
+    γ′ = gp.gain′  # K-vector whose kth entry is γ′ function of atomic class k
+
+    # Calculate the effective permittivity.
+    εeff = vtemp  # temporary storage for effective permitivity: εc + ∑ₖ(γₖ Dₖ)
+    εeff .= εc
+    for k = 1:K
+        εeff .+= γ[k](ω) .* D[k]
+    end
+
+    init_lsd!(lsd, ω, εeff)
+
+    # Calculate ∂f∂ω: derivative of SALT function w.r.t. ω, ignoring ω-dependence of D.
+    ∂f∂ω .= 2ω .* εeff
+    for k = 1:K
+        σ = ω^2 * γ′[k](ω)  # scalar
+        ∂f∂ω .+= σ .* D[k]
+    end
+    ∂f∂ω .*= ψ
+
+    return nothing
+end
 
 
 mutable struct LasingConstraint
     A::MatFloat  # constraint matrix
     b::VecFloat  # constraint vector
-    m2_active::VecBool  # vector of 2M booleans; true if corresponding row and column are active
-    LasingConstraint(M::Integer) = new(MatFloat(undef,2M,2M), VecFloat(undef,2M), VecBool(undef,2M))
-end
-
-
-function activate!(cst::LasingConstraint, lsol::LasingSol)
-    M = length(lsol)
-    for m = 1:M
-        cst.m2_active[2m-1] = cst.m2_active[2m] = lsol.active[m]
-    end
-end
-
-
-# Calculate the gradient of population inversion D with respect to the squared amplitudes a².
-function ∇ₐ₂popinv!(∇ₐ₂D::AbsVec{<:AbsVecFloat},  # output
-                    D′::AbsVecReal,  # derivative of population inversion; output of popinv′
-                    lsol::LasingSol,
-                    gp::GainProfile)
-    for m = lsol.m_active
-        ∇ₐ₂D[m] .= gp.abs2gain(lsol.ω[m]) .* (D′ .* abs2.(lsol.ψ[m]))
-    end
-
-    return nothing
-end
-
-
-# Calculate the gradient of population inversion D with respect to the eigenfrequencies ω.
-function ∇ωpopinv!(∇ωD::AbsVec{<:AbsVecFloat},  # output
-                   D′::AbsVecReal,  # derivative of population inversion; output of popinv′
-                   lsol::LasingSol,
-                   gp::GainProfile)
-    for m = lsol.m_active
-        ∇ωD[m] .=  (lsol.a²[m] * gp.abs2gain′(lsol.ω[m])) .* (D′ .*abs2.(lsol.ψ[m]))
-    end
-
-    return nothing
+    ∆ωa²::VecFloat  # vector of calculated ∆ω and ∆a²: ∆ω[m] = ∆ωa²[2m-1] and ∆a²[m] = ∆ωa²[2m]
+    LasingConstraint(M::Integer) = new(MatFloat(undef,2M,2M), VecFloat(undef,2M), VecFloat(undef,2M))
 end
 
 
 # Components necessary for fixed-point iteration
-mutable struct LasingVar{LSD<:LinearSolverData,VC<:AbsVecComplex,VF<:AbsVecFloat}
-    ∆lsol::∆LasingSol{VC}
-    mvar_vec::Vector{LasingModalVar{LSD,VC}}
+mutable struct LasingVar{LSD<:LinearSolverData,VF<:AbsVecFloat,VC<:AbsVecComplex}
     rvar::LasingReducedVar{VF}
+    mvar_vec::Vector{LasingModalVar{LSD,VC}}
     cst::LasingConstraint
     inited::Bool
 end
 LasingVar(lsd_temp::LinearSolverData, vtemp::AbsVec, M::Integer) =
-    LasingVar(∆LasingSol(vtemp, M), [LasingModalVar(lsd_temp, vtemp) for m = 1:M], LasingReducedVar(vtemp, M), LasingConstraint(M), false)
+    LasingVar(LasingReducedVar(vtemp), [LasingModalVar(lsd_temp, vtemp) for m = 1:M], LasingConstraint(M), false)
 LasingVar(lsd_temp::LinearSolverData, N::Integer, M::Integer) = LasingVar(lsd_temp, VecFloat(undef,N), M)
 
 
-# Initialize the variables that are NOT specific to the SALT equation for a specific lasing
-# mode.  These variables are constructed either by summing up the contributions from all
-# lasing modes, or by storing the contributions of the individual lasing modes separately
-# without summing them up.
-function init_reduced_var!(rvar::LasingReducedVar, ∆lsol::∆LasingSol, lsol::LasingSol, gp::GainProfile)
-    hb = lsol.vtemp  # temporary storage for hole-burning term
-    hole_burning!(hb, lsol.ω, lsol.a², lsol.ψ, gp.abs2gain)
-
-    rvar.D .= gp.D₀ ./ hb  # D = D₀ / (1 + ∑|γaψ|²)
-    rvar.D′ .= -gp.D₀ ./ abs2.(hb)  # D′(∑|γaψ|²) = -D₀ / (1+∑|γaψ|²)²
-
-    ∇ₐ₂popinv!(rvar.∇ₐ₂D, rvar.D′, lsol, gp)
-    ∇ωpopinv!(rvar.∇ωD, rvar.D′, lsol, gp)
-
-    # @info "‖D‖ = $(norm(rvar.D)), ‖D′‖ = $(norm(rvar.D′)), ‖∆D‖ = $(norm(rvar.∆D))"
-    # for m = lsol.m_active
-    #     @info "‖∇ₐ₂D[$m]‖ = $(norm(rvar.∇ₐ₂D[m]))"
-    # end
-
-    return nothing
-end
-
-
-# Initialize the variables that are specific to the SALT equation for a specific lasing mode.
-function init_modal_var!(mvar::LasingModalVar,
-                         m::Integer,  # index of lasing mode
-                         lsol::LasingSol,
-                         rvar::LasingReducedVar,
-                         gp::GainProfile,
-                         εc::AbsVecComplex)
-    ω = lsol.ω[m]::Real  # test if type of ω is real
-
-    γ = gp.gain(ω)
-    γ′ = gp.gain′(ω)
-
-    ε = lsol.vtemp  # temporary storage for effective permitivity: εc + γ D
-    ε .= εc .+ γ .* rvar.D
-
-    init_lsd!(mvar.lsd, ω, ε)
-    mvar.ω²γψ .= (ω^2*γ) .* lsol.ψ[m]
-    mvar.∂f∂ω .= (2ω .* ε + (ω^2*γ′) .* rvar.D) .* lsol.ψ[m]  # derivative of lasing equation function w.r.t ω, ignoring ω-dependence of D
-
-    # Above, I may want to separate out the γ-dependent terms from ε and ∂f∂ω later, because
-    # I will consider different classe atoms to model inhomogeneous broadering, where the
-    # γ-dependent terms will be summed over the classes.  Currently, it seems that the other
-    # parts of the code can be called independently for different classes of atoms and
-    # summed up later.  In contrast, ∂f∂ω cannot be constructed for different classes of
-    # atoms and summed up later.
-
-    return nothing
-end
-
-
-# Initialize ∆lsol by filling zeros to all vectors for the single-loop algorithm.
-function init_∆lsol!(∆lsol::∆LasingSol)
-    ∆lsol.∆ω .= 0
-    ∆lsol.∆a² .= 0
-
-    return nothing
- end
-
-
 function init_lvar!(lvar::LasingVar, lsol::LasingSol, gp::GainProfile, εc::AbsVecComplex)
-    ∆lsol = lvar.∆lsol
-    mvar_vec = lvar.mvar_vec
     rvar = lvar.rvar
+    mvar_vec = lvar.mvar_vec
 
-    init_∆lsol!(∆lsol)  # make ∆lsol all zero
-    init_reduced_var!(rvar, ∆lsol, lsol, gp)
+    init_reduced_var!(rvar, lsol, gp)
     for m = lsol.m_active
-        init_modal_var!(mvar_vec[m], m, lsol, rvar, gp, εc)
+        init_modal_var!(mvar_vec[m], m, lsol, rvar.D, gp, εc)
     end
 
     lvar.inited = true
@@ -345,115 +266,172 @@ function norm_leq(lsol::LasingSol, lvar::LasingVar, gp::GainProfile)
 end
 
 
-# Create the mth constraint equation on ∆ω and ∆a.
+# Create the mth constraint equation for ∆ω and ∆a.
 function set_constraint!(cst::LasingConstraint,
-                         ∆lsol::∆LasingSol,
                          lsol::LasingSol,
-                         m::Integer,  # index of lasing mode of interest
+                         indₘ::Integer,  # index of m in m_active
                          mvar::LasingModalVar,  # modal variables for mth lasing mode
-                         rvar::LasingReducedVar)
-    ψ = lsol.ψ[m]
-    iₐ = lsol.iₐ[m]
-
-    vtemp1 = lsol.vtemp
-    vtemp2 = ∆lsol.vtemp
-
+                         rvar::LasingReducedVar,
+                         gp::GainProfile)
     # Retrieve necessary variables for constructing the constraint.
-    ∇ₐ₂D = rvar.∇ₐ₂D
-    ∇ωD = rvar.∇ωD
+    m = lsol.m_active[indₘ]  # modal index of equation of interest
+    L = num_active(lsol)  # number of currently lasing modes
+    K = length(gp)  # number of atomic classes
+
+    A = cst.A  # left-hand-side matrix of constraint equation
+    b = cst.b  # right-hand-side vector of constraint equation
+
+    ω = lsol.ω  # M-vector whose mth entry is current approximate mth eigenfrequency
+    a² = lsol.a²  # M-vector whose mth entry is squared amplitude of current approximate mth eigenmode
+    ψ = lsol.ψ  # M-vector whose mth entry is current approximate mth eigenmode
+    abs2ψ = lsol.abs2ψ  # M-vector whose mth entry is absolute square of current approximate mth eigenmode
+
+    ωₘ = ω[m]
+    ωₘ² = ωₘ^2
+    ψₘ = ψ[m]
+    iₐₘ = lsol.iₐ[m]  # where mth eigenmode is normalized
+
+    vtemp = lsol.vtemp  # scratch space 1
+    wtemp = lsol.wtemp  # scratch space 2
+
+    γ = gp.gain  # K-vector whose kth entry is γ function of atomic class k
+    abs2γ = gp.abs2gain  # K-vector whose kth entry is |γ|² function of atomic class k
+    abs2γ′ = gp.abs2gain′  # K-vector whose kth entry is ∂|γ|²/∂ω function of atomic class k
+
+    D′ = rvar.D′  # K-vector whose kth entry is derivative of population inversion of class-k atoms w.r.t. hole-burning term
 
     # Calculate the iₐth row of A⁻¹ and keep it as a column vector
-    eᵢₐ = vtemp2
+    eᵢₐ = vtemp
     eᵢₐ .= 0
-    eᵢₐ[iₐ] = 1
-    r = vtemp1  # storage for row vector
+    eᵢₐ[iₐₘ] = 1
+    r = wtemp  # storage for row vector
     linsolve_transpose!(r, mvar.lsd, eᵢₐ)
-    # @info "‖r‖ = $(norm(r))"  # WIP for manuscript
-
-    ω²γψ = mvar.ω²γψ
-    ∂f∂ω = mvar.∂f∂ω
-    A = cst.A  # constraint right-hand-side matrix
-    b = cst.b  # constraint right-hand-side vector
 
     # Construct A and b.  Note that they are initialized to zero outside the present
-    # function (inside update_lsol_impl!).
+    # function, by update_lsol_impl!.
 
     # Set the mth complex row of right-hand-side vector b of the constraint.
-    ζv = ψ[iₐ]
-    # @info "ψ[iₐ] = $(ψ[iₐ]), ‖ψ‖ = $(norm(ψ))"  # WIP for manuscript
-    # ζv = ψ[iₐ]  # because ∆D = 0
-    # ζv = 1.0 + 0.0im  # because ∆D = 0 and ψ[iₐ] = 1
-    b[2m-1] = real(ζv)
-    b[2m] = imag(ζv)
+    @assert ψₘ[iₐₘ] ≈ 1
+    b[2indₘ-1] = 1.0  # real(ψₘ[iₐₘ])
+    b[2indₘ] = 0.0  # imag(ψₘ[iₐₘ])
 
     # Set the mth complex row of the left-hand-side matrix A of the constraint.
-    for j = lsol.m_active
-        vtemp2 .= ∇ωD[j] .* ω²γψ  # this uses no allocations
-        ζω = BLAS.dotu(r, vtemp2)
-        A[2m-1,2j-1] = real(ζω)
-        A[2m,2j-1] = imag(ζω)
+    for indⱼ = 1:L
+        j = lsol.m_active[indⱼ]  # jth complex column
 
-        vtemp2 .= ∇ₐ₂D[j] .* ω²γψ  # this uses no allocations
-        ζa² = BLAS.dotu(r, vtemp2)
-        A[2m-1,2j] = real(ζa²)
-        A[2m,2j] = imag(ζa²)
+        ωⱼ = ω[j]
+        a²ⱼ = a²[j]
+        abs2ψⱼ = abs2ψ[j]
+
+        # Set the coefficient of ∆ωⱼ.
+        vtemp .= 0
+        ωₘ²a²ⱼ = ωₘ² * a²ⱼ  # scalar
+        for k = 1:K
+            σ = (ωₘ²a²ⱼ * abs2γ′[k](ωⱼ)) * γ[k](ωₘ)  # scalar: (real * real) * complex
+            vtemp .+= σ .* D′[k]
+        end
+        vtemp .*= ψₘ .* abs2ψⱼ
+
+        # The mth complex row has an additional contribution in the mth complex column from
+        # the ωₘ-dependence outside the ω-dependent D.
+        j==m && (vtemp .+= mvar.∂f∂ω)
+
+        mω = BLAS.dotu(r, vtemp)
+        A[2indₘ-1, 2indⱼ-1] = real(mω)
+        A[2indₘ, 2indⱼ-1] = imag(mω)
+
+        # Set the coefficient of ∆a²ⱼ.
+        vtemp .= 0
+        for k = 1:K
+            σ = (ωₘ² * abs2γ[k](ωⱼ)) * γ[k](ωₘ)  # scalar: (real * real) * complex
+            vtemp .+= σ .* D′[k]
+        end
+        vtemp .*= ψₘ .* abs2ψⱼ
+
+        ma² = BLAS.dotu(r, vtemp)
+        A[2indₘ-1, 2indⱼ] = real(ma²)
+        A[2indₘ, 2indⱼ] = imag(ma²)
     end
-
-    # The mth complex column in the mth complex row has additional contributions from ωₘ
-    # outside γ(ωⱼ)'s.
-    ζω = BLAS.dotu(r, ∂f∂ω)
-    A[2m-1,2m-1] += real(ζω)
-    A[2m,2m-1] += imag(ζω)
-
-    # @info "A = $A, b = $b"
 
     return nothing
 end
 
 
-# Move lsolₘ by ∆lsolₘ.
+# Update ψ for the mth mode.  This function does not update ω and a².
 function update_ψₘ!(lsol::LasingSol,
-                    ∆lsol::∆LasingSol,
-                    m::Integer,  # index of lasing mode of interest
-                    mvar::LasingModalVar,  # ∆ω and ∆a² must be already updated; see update_∆lsol
-                    rvar::LasingReducedVar)
+                    ∆ωa²::VecFloat,
+                    indₘ::Integer,  # index of m in m_active
+                    mvar::LasingModalVar,
+                    rvar::LasingReducedVar,
+                    gp::GainProfile)
     # Retrieve necessary variables for constructing the constraint.
-    ∇ₐ₂D = rvar.∇ₐ₂D
-    ∇ωD = rvar.∇ωD
+    m = lsol.m_active[indₘ]  # modal index of equation of interest
+    L = num_active(lsol)  # number of currently lasing modes
+    K = length(gp)  # number of atomic classes
 
-    ω²γψ = mvar.ω²γψ
-    ∂f∂ω = mvar.∂f∂ω
+    ω = lsol.ω  # M-vector whose mth entry is current approximate mth eigenfrequency
+    a² = lsol.a²  # M-vector whose mth entry is squared amplitude of current approximate mth eigenmode
+    ψ = lsol.ψ  # M-vector whose mth entry is current approximate mth eigenmode
+    abs2ψ = lsol.abs2ψ  # M-vector whose mth entry is absolute square of current approximate mth eigenmode
 
-    ∆ω = ∆lsol.∆ω
-    ∆a² = ∆lsol.∆a²
+    ωₘ = ω[m]
+    ωₘ² = ωₘ^2
+    ψₘ = ψ[m]
+    iₐₘ = lsol.iₐ[m]  # where mth eigenmode is normalized
 
-    ψ = lsol.ψ[m]
+    vtemp = lsol.vtemp  # scratch space 1
+    wtemp = lsol.wtemp  # scratch space 1
 
-    # Calculate the vector to feed to A⁻¹.
-    vtemp = lsol.vtemp
-    vtemp .= 0
-    for j = lsol.m_active
-        # @info "‖∇ₐ₂D[$j]‖ = $(norm(∇ₐ₂D[j]))"
-        vtemp .+= ∆ω[j] .* ∇ωD[j]
-        vtemp .+= ∆a²[j] .* ∇ₐ₂D[j]
+    γ = gp.gain  # K-vector whose kth entry is γ function of atomic class k
+    abs2γ = gp.abs2gain  # K-vector whose kth entry is |γ|² function of atomic class k
+    abs2γ′ = gp.abs2gain′  # K-vector whose kth entry is ∂|γ|²/∂ω function of atomic class k
+
+    D′ = rvar.D′  # K-vector whose kth entry is derivative of population inversion of class-k atoms w.r.t. hole-burning term
+
+    wtemp .= 0  # initialize for mth row
+    for indⱼ = 1:L
+        j = lsol.m_active[indⱼ]  # jth complex column
+
+        ωⱼ = ω[j]
+        a²ⱼ = a²[j]
+        abs2ψⱼ = abs2ψ[j]
+
+        ∆ωⱼ = ∆ωa²[2indⱼ-1]
+        ∆a²ⱼ = ∆ωa²[2indⱼ]
+
+        # Add the contribution of ∆ωⱼ.
+        vtemp .= 0  # initialize for ∆ωⱼ
+        ωₘ²a²ⱼ = ωₘ² * a²ⱼ  # scalar
+        for k = 1:K
+            σ = (∆ωⱼ * ωₘ²a²ⱼ * abs2γ′[k](ωⱼ)) * γ[k](ωₘ)  # scalar: (real * real * real) * complex
+            vtemp .+= σ .* D′[k]
+        end
+        vtemp .*= abs2ψⱼ  # ψₘ will be multiplied outside for loop, because it is common for both ∆ω and ∆a²
+        wtemp .+= vtemp
+
+        # Add the contribution of ∆a²ⱼ.
+        vtemp .= 0  # initialize for ∆a²ⱼ
+        for k = 1:K
+            σ = (∆a²ⱼ * ωₘ² * abs2γ[k](ωⱼ)) * γ[k](ωₘ)  # scalar: (real * real * real) * complex
+            vtemp .+= σ .* D′[k]
+        end
+        vtemp .*= abs2ψⱼ  # ψₘ will be multiplied outside for loop, because it is common for both ∆ω and ∆a²
+        wtemp .+= vtemp
     end
-    vtemp .*= ω²γψ
-    vtemp .+= ∆ω[m] .* ∂f∂ω
+    wtemp .*= ψₘ
+
+    # The mth complex row has an additional contribution from the ωₘ-dependence outside the
+    # ω-dependent D.
+    ∆ωₘ = ∆ωa²[2indₘ-1]
+    wtemp .+= ∆ωₘ .* mvar.∂f∂ω
 
     # @info "‖A‖₁ = $(opnorm(mvar.A,1)), ‖vtemp‖ = $(norm(vtemp))"
-    linsolve!(ψ, mvar.lsd, vtemp)  # ψ .= mvar.lsd \ vtemp
+    linsolve!(ψₘ, mvar.lsd, wtemp)  # ψₘ .= mvar.lsd \ wtemp
 
-    # Normalize ψ just in case ψ[iₐ] ≠ 1.  (Do we need to unnormalize a²?)
-    iₐ = lsol.iₐ[m]
-    # ψ[iₐ]≈1 || @warn "lasing mode m = $m is slightly nonnormal: |ψ[iₐ]-1| = $(abs(ψ[iₐ]-1)).  The mode will be renormalized."
-    ψ ./= ψ[iₐ]
-
-    # # The following could have been updated before this function, because all the ω- and a²-
-    # # dependent quantities were already prepared.  The main purpose of the present function
-    # # is to update ψ[m].  However, because the present function is called for all m, we
-    # # update ω[m] and a²[m] here as well.
-    # lsol.ω[m] += ∆ω[m]
-    # lsol.a²[m] += ∆a²[m]
+    # Normalize ψₘ just in case ψₘ[iₐₘ] ≠ 1.
+    # ψₘ[iₐₘ]≈1 || @warn "lasing mode m = $m is slightly nonnormal: |ψₘ[iₐₘ]-1| = $(abs(ψₘ[iₐₘ]-1)).  The mode will be renormalized."
+    # @info "ψₘ[iₐₘ] = $(ψₘ[iₐₘ])"
+    ψₘ ./= ψₘ[iₐₘ]
 
     return nothing
 end
@@ -462,7 +440,7 @@ end
 # lvar must be already initialized by init_lvar! before starting the fixed-point iteration.
 function update_lsol!(lsol::LasingSol, lvar::LasingVar, gp::GainProfile)
     lvar.inited || throw(ArgumentError("lvar is uninitialized: call init_lvar!(...) first."))
-    update_lsol_impl!(lsol, lvar.∆lsol, lvar.mvar_vec, lvar.rvar, lvar.cst, gp)
+    update_lsol_impl!(lsol, lvar.mvar_vec, lvar.rvar, lvar.cst, gp)
     lvar.inited = false
 
     return nothing
@@ -478,42 +456,63 @@ end
 # init_lvar! is not exported in order to force checking the norm by norm_leq to avoid
 # calling this function when the norm is small enough.
 function update_lsol_impl!(lsol::LasingSol,
-                           ∆lsol::∆LasingSol,
                            mvar_vec::AbsVec{<:LasingModalVar},  # must be already initialized
                            rvar::LasingReducedVar,  # must be already initialized
                            cst::LasingConstraint,
                            gp::GainProfile)
     # Construct the constraint equation on ∆ω and ∆a.
-    cst.A .= 0
-    cst.b .= 0
-    for m = lsol.m_active
-        set_constraint!(cst, ∆lsol, lsol, m, mvar_vec[m], rvar)
+    L = num_active(lsol)
+
+    A = cst.A
+    b = cst.b
+    ∆ωa² = cst.∆ωa²
+
+    A .= 0
+    b .= 0
+    ∆ωa² .= 0
+
+    # Below, we iterate over the contiguous indices indₘ to retrieve the currently lasing
+    # mode index m from m_active, instead of directly iterating over m_active.  This is
+    # because we cannot use a submatrix @view(A[ind,ind]) in ldiv! when ind is not a
+    # contiguous range of indices.  See https://github.com/JuliaLang/julia/issues/30097.
+    for indₘ = 1:L
+        m = lsol.m_active[indₘ]
+        set_constraint!(cst, lsol, indₘ, mvar_vec[m], rvar, gp)
     end
 
     # Calculate ∆ω and ∆a.
-    activate!(cst, lsol)
-    ind = cst.m2_active
-    ∆ωa² = cst.A[ind,ind] \ cst.b[ind]
-    # @info "cst.A = $(cst.A[ind,ind]), cst.b = $(cst.b[ind]), ∆ωa² = $∆ωa²"
-    c = 0  # count
-    for m = lsol.m_active
-        c += 1
-        ∆lsol.∆ω[m] = ∆ωa²[2c-1]
-        ∆lsol.∆a²[m] = ∆ωa²[2c]
-    end
+    LU = lu!(@view(A[1:2L,1:2L]))
+    ldiv!(@view(∆ωa²[1:2L]), LU, @view(b[1:2L]))
+    # @info "A = $(A[1:2L,1:2L]), b = $(b[1:2L]), ∆ωa² = $(∆ωa²[1:2L])"
 
     # Update ψ.
     # @info "lsol.ω = $(lsol.ω), lsol.a² = $(lsol.a²), lsol.m_active = $(lsol.m_active)"
-    for m = lsol.m_active
+    for indₘ = 1:L
+        m = lsol.m_active[indₘ]
         # @info "before apply: ‖lsol.ψ[$m]‖ = $(norm(lsol.ψ[m]))"
-        update_ψₘ!(lsol, ∆lsol, m, mvar_vec[m], rvar)
+        update_ψₘ!(lsol, ∆ωa², indₘ, mvar_vec[m], rvar, gp)
         # @info "after apply: ‖lsol.ψ[$m]‖ = $(norm(lsol.ψ[m]))"
     end
 
     # Update ω and a².
-    for m = lsol.m_active
-        lsol.ω[m] += ∆lsol.∆ω[m]
-        lsol.a²[m] += ∆lsol.∆a²[m]
+    #
+    # abs2ψ is not updated here, because the Anderson acceleration affinely combines the
+    # previous solutions and therefore makes abs2ψ for ψ generated by fixed-point function
+    # irrelevant.  Therefore, abs2ψ must be updated at the beginning of the fixed-point
+    # function (where abs2ψ is used for the first time in that iteration step) rather than
+    # at the end.  This is inside init_lvar!, whose evaluation in checked at the beginning
+    # of update_lsol!.
+    #
+    # The following loop must not be merged with the loop above, because update_ψₘ! uses
+    # un-updated ω and a².
+    for indₘ = 1:L
+        m = lsol.m_active[indₘ]
+
+        ∆ωₘ = ∆ωa²[2indₘ-1]
+        ∆a²ₘ = ∆ωa²[2indₘ]
+
+        lsol.ω[m] += ∆ωₘ
+        lsol.a²[m] += ∆a²ₘ
     end
 
     return nothing

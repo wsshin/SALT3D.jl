@@ -52,7 +52,7 @@ function solve_nleq!(nlsol::NonlasingSol,
                      nlvar::NonlasingVar,
                      gp::GainProfile,
                      εc::AbsVecComplex,
-                     D::AbsVecFloat=gp.D₀;
+                     D::AbsVec{<:AbsVecFloat};  # must be already initialized
                      τr::Real=TR_NEWTON,  # relative tolerance
                      τa::Real=TA_NEWTON,  # absolute tolerance
                      maxit::Integer=MAXIT_NEWTON,  # maximum number of Newton iteration steps
@@ -212,9 +212,11 @@ function pump!(lsol::LasingSol, lvar::LasingVar,
                maxit_anderson::Integer=MAXIT_ANDERSON,  # maximum number of Anderson iteration steps
                verbose::Bool=true)
     println("\nPump nonlasinge equation.")
+
+    init_reduced_var!(lvar.rvar, lsol, gp)  # initialize D
     for d = dvec[1:end-1]  # d = dvec[end] will be handled in solve_salt! below
         setD₀!(gp, d)
-        solve_nleq!(nlsol, nlvar, gp, εc, τr=τr_newton, τa=τa_newton, maxit=maxit_newton, verbose=verbose)
+        solve_nleq!(nlsol, nlvar, gp, εc, lvar.rvar.D, τr=τr_newton, τa=τa_newton, maxit=maxit_newton, verbose=verbose)
         verbose && println("d = $d, ωₙₗ = $(string(nlsol.ω)[17:end])")  # 17 is to skip header "Complex{Float64}"
     end
 
@@ -446,7 +448,7 @@ function find_threshold_secant!(lsol::LasingSol, lvar::LasingVar,
 
     # Solve the nonlasing equation for the mode m.
     println()
-    solve_nleq!(nlsol, nlvar, gp, εc, lvar.rvar.D, εc, τr=τr_newton, τa=τa_newton, maxit=maxit_newton, verbose=verbose)
+    solve_nleq!(nlsol, nlvar, gp, εc, lvar.rvar.D, τr=τr_newton, τa=τa_newton, maxit=maxit_newton, verbose=verbose)
     println("\nResult: Im{ωₙₗ[$m]} = $(imag(nlsol.ω[m]))")
 
     return d

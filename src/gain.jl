@@ -67,36 +67,41 @@ gen_abs2γ′(ω₀::Real, γperp::Real) = ω::Real -> -2γperp^2 * (ω - ω₀)
 # Parameters defining the SALT problem
 # Consider including CC to gp, if I am really going to use ω₀ for PML for all modes.
 mutable struct GainProfile{VF<:AbsVecFloat}  # VF can be PETSc vectors
-    gain::Function  # gain curve
-    gain′::Function  # derivative of gain curve
-    abs2gain::Function  # squared absolute value of gain curve
-    abs2gain′::Function  # derivative of squared absolute value of gain curve
+    gain::VecFun  # gain curve
+    gain′::VecFun  # derivative of gain curve
+    abs2gain::VecFun  # squared absolute value of gain curve
+    abs2gain′::VecFun  # derivative of squared absolute value of gain curve
     D₀::VF  # pump strength
-    function GainProfile{VF}(gain::Function,
-                             gain′::Function,
-                             abs2gain::Function,
-                             abs2gain′::Function,
-                             D₀::AbsVecReal) where {VF<:AbsVecFloat}
+    wt::VecFun  # function that calculates contribution of D₀ to kth atomic class; D₀ₖ = wt.(D₀)
+    function GainProfile{VF}(gain::AbsVecFunction,
+                             gain′::AbsVecFunction,
+                             abs2gain::AbsVecFunction,
+                             abs2gain′::AbsVecFunction,
+                             D₀::AbsVecReal,
+                             wt::AbsVecFunction) where {VF<:AbsVecFloat}
 
-        return new(gain, gain′, abs2gain, abs2gain′, D₀)
+        K = length(wt)  # number of atomic classes
+        length(gain)==length(gain′)==length(abs2gain)==length(abs2gain′)==K ||
+            throw(ArgumentError("length(gain) = $(length(gain)), length(gain′) = $(length(gain′)), "*
+                                "length(abs2gain) = $(length(abs2gain)), length(abs2gain′) = $(length(abs2gain′)) must be the same as length(wt) = $(length(wt))."))
+
+        return new(gain, gain′, abs2gain, abs2gain′, D₀, wt)
     end
 end
 
-GainProfile(ω₀::Real, γperp::Real, D₀::AbsVecReal) = GainProfile(gen_γ(ω₀,γperp), gen_γ′(ω₀,γperp), gen_abs2γ(ω₀,γperp), gen_abs2γ′(ω₀,γperp), D₀)
-GainProfile(ω₀::Real, γperp::Real, vtemp::AbsVec) =  GainProfile(gen_γ(ω₀,γperp), gen_γ′(ω₀,γperp), gen_abs2γ(ω₀,γperp), gen_abs2γ′(ω₀,γperp), vtemp::AbsVec)
-GainProfile(ω₀::Real, γperp::Real, N::Integer) = GainProfile(gen_γ(ω₀,γperp), gen_γ′(ω₀,γperp), gen_abs2γ(ω₀,γperp), gen_abs2γ′(ω₀,γperp), N::Integer)
-
-# # The following constructor avoids copying D₀.
-# GainProfile(gain::Function, gain′::Function, abs2gain::Function, abs2gain′::Function, D₀::VF) where {VF<:AbsVecFloat} =
-#     GainProfile{VC,VF}(gain, gain′, abs2gain, abs2gain′, D₀)
-
-# The following constructor copies D₀.
-function GainProfile(gain::Function, gain′::Function, abs2gain::Function, abs2gain′::Function, D₀::AbsVecReal)
+# Outer constructor that copies D₀.
+function GainProfile(gain::AbsVecFunction, gain′::AbsVecFunction, abs2gain::AbsVecFunction, abs2gain′::AbsVecFunction, D₀::AbsVecReal, wt::AbsVecFunction)
     D₀_new = similar(D₀,Float)
     copyto!(D₀_new, D₀)
 
-    return GainProfile{typeof(D₀_new)}(gain, gain′, abs2gain, abs2gain′, D₀_new)
+    return GainProfile{typeof(D₀_new)}(gain, gain′, abs2gain, abs2gain′, D₀_new, wt)
 end
+
+GainProfile(gain::AbsVecFunction, gain′::AbsVecFunction, abs2gain::AbsVecFunction, abs2gain′::AbsVecFunction, D₀::AbsVecReal) =
+    (K = length(gain); GainProfile(gain, gain′, abs2gain, abs2gain′, D₀, [(d::Real->d/K) for k=1:K]))  # even distribution
+
+GainProfile(gain::Function, gain′::Function, abs2gain::Function, abs2gain′::Function, D₀::AbsVecReal) =
+    GainProfile([gain], [gain′], [abs2gain], [abs2gain′], D₀)
 
 # To do: check if the following works for vtemp of PETSc vector type.
 GainProfile(ω, vtemp::AbsVec) =  # template vector with N entries
@@ -104,17 +109,24 @@ GainProfile(ω, vtemp::AbsVec) =  # template vector with N entries
 GainProfile(gain::Function, gain′::Function, abs2gain::Function, abs2gain′::Function, N::Integer) =
     GainProfile(gain, gain′, abs2gain, abs2gain′, VecFloat(undef,N))
 
+# Convenience constructors with Lorentzian parameters
+GainProfile(ω₀::Real, γperp::Real, D₀::AbsVecReal) = GainProfile(gen_γ(ω₀,γperp), gen_γ′(ω₀,γperp), gen_abs2γ(ω₀,γperp), gen_abs2γ′(ω₀,γperp), D₀)
+GainProfile(ω₀::Real, γperp::Real, vtemp::AbsVec) =  GainProfile(gen_γ(ω₀,γperp), gen_γ′(ω₀,γperp), gen_abs2γ(ω₀,γperp), gen_abs2γ′(ω₀,γperp), vtemp::AbsVec)
+GainProfile(ω₀::Real, γperp::Real, N::Integer) = GainProfile(gen_γ(ω₀,γperp), gen_γ′(ω₀,γperp), gen_abs2γ(ω₀,γperp), gen_abs2γ′(ω₀,γperp), N::Integer)
+
+Base.length(gp::GainProfile) = length(gp.wt)  # number of atomic classes
+
 # Evaluate 1 + hole-burning term = 1 + ∑|γaψ|².
 function hole_burning!(hb::AbsVecNumber,  # output
+                       abs2gain::Function,  # function that takes ω and produces |γ(ω)|²
                        ω::AbsVecReal,  # vector of lasing frequencies
                        a²::AbsVecReal,  # vector of squared amplitudes of unnormalized eigenmodes
-                       ψ::AbsVec{<:AbsVecNumber},  # vector of normalized eigenmodes
-                       abs2gain::Function)  # function that takes ω and produces |γ(ω)|²
+                       abs2ψ::AbsVec{<:AbsVecReal})  # vector of absolute squares of normalized eigenmodes
     hb .= 1  # initialize
     for m = 1:length(a²)
         if a²[m] ≠ 0
             # @info "a²[$m] = $(a²[m]), ‖ψ[$m]‖ = $(norm(ψ[m]))"
-            hb .+=  (abs2gain(ω[m]) * a²[m]) .* abs2.(ψ[m])
+            hb .+=  (abs2gain(ω[m]) * a²[m]) .* abs2ψ[m]
         end
     end
     # @info "‖hb‖ = $(norm(hb))"
