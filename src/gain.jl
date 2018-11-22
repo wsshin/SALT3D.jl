@@ -89,14 +89,13 @@ mutable struct GainProfile{VF<:AbsVecFloat}  # VF can be PETSc vectors
     end
 end
 
-function GainProfile(gain::AbsVecFunction, gain′::AbsVecFunction, abs2gain::AbsVecFunction, abs2gain′::AbsVecFunction, D₀::AbsVecReal, wt::AbsVecFunction)
+function GainProfile(gain::AbsVecFunction, gain′::AbsVecFunction, abs2gain::AbsVecFunction, abs2gain′::AbsVecFunction, D₀::AbsVecReal,
+                     wt::AbsVecFunction=(K=length(gain); [(d::Real->d/K) for k=1:K]))  # default wt: even distribution
     D₀_new = similar(D₀,Float)
     copyto!(D₀_new, D₀)
 
     return GainProfile{typeof(D₀_new)}(gain, gain′, abs2gain, abs2gain′, D₀_new, wt)
 end
-GainProfile(gain::AbsVecFunction, gain′::AbsVecFunction, abs2gain::AbsVecFunction, abs2gain′::AbsVecFunction, D₀::AbsVecReal) =
-    (K = length(gain); GainProfile(gain, gain′, abs2gain, abs2gain′, D₀, [(d::Real->d/K) for k=1:K]))  # even distribution
 
 # Single atomic class
 GainProfile(gain::Function, gain′::Function, abs2gain::Function, abs2gain′::Function, D₀::AbsVecReal) =
@@ -108,7 +107,8 @@ GainProfile(gain::Function, gain′::Function, abs2gain::Function, abs2gain′::
 
 #= Convenience constructors with Lorentzian parameters =#
 # Multiple atomic classes
-function GainProfile(ω₀::AbsVecReal, γperp::AbsVecReal, D₀::AbsVecReal, wt::AbsVecReal)
+function GainProfile(ω₀::AbsVecReal, γperp::AbsVecReal, D₀::AbsVecReal,
+                     wt::AbsVecReal=(K=length(ω₀); fill(1.0/K,K)))  # default wt: even distribution
     K = length(wt)
     length(ω₀)==length(γperp)==K ||
         throw(ArgumentError("length(ω₀) = $(length(ω₀)), length(γperp) = $(length(γperp)), " *
@@ -122,8 +122,10 @@ function GainProfile(ω₀::AbsVecReal, γperp::AbsVecReal, D₀::AbsVecReal, wt
 
     return GainProfile(γ, γ′, abs2γ, abs2γ′, D₀, wtfun)
 end
-GainProfile(ω₀::AbsVecReal, γperp::AbsVecReal, N::Integer) = (K = length(ω₀); GainProfile(ω₀, γperp, VecFloat(undef,N), fill(1.0/K,K)))  # even distribution
-GainProfile(ω₀::AbsVecReal, γperp::Real, N::Integer) = (K = length(ω₀); GainProfile(ω₀, fill(γperp,K), VecFloat(undef,N), fill(1.0/K,K)))  # even distribution
+GainProfile(ω₀::AbsVecReal, γperp::AbsVecReal, N::Integer, wt::AbsVecReal=(K=length(ω₀); fill(1.0/K,K))) =  # default wt: even distribution
+    GainProfile(ω₀, γperp, VecFloat(undef,N), wt)
+GainProfile(ω₀::AbsVecReal, γperp::Real, N::Integer, wt::AbsVecReal=(K=length(ω₀); fill(1.0/K,K))) =  # default wt: even distribution
+    GainProfile(ω₀, fill(γperp,length(ω₀)), VecFloat(undef,N), wt)
 
 # Single atomic class
 GainProfile(ω₀::Real, γperp::Real, D₀::AbsVecReal) = GainProfile(gen_γ(ω₀,γperp), gen_γ′(ω₀,γperp), gen_abs2γ(ω₀,γperp), gen_abs2γ′(ω₀,γperp), D₀)
