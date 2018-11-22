@@ -82,34 +82,50 @@ mutable struct GainProfile{VF<:AbsVecFloat}  # VF can be PETSc vectors
 
         K = length(wt)  # number of atomic classes
         length(gain)==length(gain′)==length(abs2gain)==length(abs2gain′)==K ||
-            throw(ArgumentError("length(gain) = $(length(gain)), length(gain′) = $(length(gain′)), "*
+            throw(ArgumentError("length(gain) = $(length(gain)), length(gain′) = $(length(gain′)), " *
                                 "length(abs2gain) = $(length(abs2gain)), length(abs2gain′) = $(length(abs2gain′)) must be the same as length(wt) = $(length(wt))."))
 
         return new(gain, gain′, abs2gain, abs2gain′, D₀, wt)
     end
 end
 
-# Outer constructor that copies D₀.
 function GainProfile(gain::AbsVecFunction, gain′::AbsVecFunction, abs2gain::AbsVecFunction, abs2gain′::AbsVecFunction, D₀::AbsVecReal, wt::AbsVecFunction)
     D₀_new = similar(D₀,Float)
     copyto!(D₀_new, D₀)
 
     return GainProfile{typeof(D₀_new)}(gain, gain′, abs2gain, abs2gain′, D₀_new, wt)
 end
-
 GainProfile(gain::AbsVecFunction, gain′::AbsVecFunction, abs2gain::AbsVecFunction, abs2gain′::AbsVecFunction, D₀::AbsVecReal) =
     (K = length(gain); GainProfile(gain, gain′, abs2gain, abs2gain′, D₀, [(d::Real->d/K) for k=1:K]))  # even distribution
 
+# Single atomic class
 GainProfile(gain::Function, gain′::Function, abs2gain::Function, abs2gain′::Function, D₀::AbsVecReal) =
     GainProfile([gain], [gain′], [abs2gain], [abs2gain′], D₀)
-
-# To do: check if the following works for vtemp of PETSc vector type.
-GainProfile(ω, vtemp::AbsVec) =  # template vector with N entries
+GainProfile(ω, vtemp::AbsVec) =  # vtemp: template vector with N entries
     GainProfile(gain, gain′, abs2gain, abs2gain′, similar(vtemp,Float))
 GainProfile(gain::Function, gain′::Function, abs2gain::Function, abs2gain′::Function, N::Integer) =
     GainProfile(gain, gain′, abs2gain, abs2gain′, VecFloat(undef,N))
 
-# Convenience constructors with Lorentzian parameters
+#= Convenience constructors with Lorentzian parameters =#
+# Multiple atomic classes
+function GainProfile(ω₀::AbsVecReal, γperp::AbsVecReal, D₀::AbsVecReal, wt::AbsVecReal)
+    K = length(wt)
+    length(ω₀)==length(γperp)==K ||
+        throw(ArgumentError("length(ω₀) = $(length(ω₀)), length(γperp) = $(length(γperp)), " *
+                            "length(wt) = $(length(wt)) must be the same."))
+
+    γ = [gen_γ(float(ω₀[k]), float(γperp[k])) for k = 1:K]
+    γ′ = [gen_γ′(float(ω₀[k]), float(γperp[k])) for k = 1:K]
+    abs2γ = [gen_abs2γ(float(ω₀[k]), float(γperp[k])) for k = 1:K]
+    abs2γ′ = [gen_abs2γ′(float(ω₀[k]), float(γperp[k])) for k = 1:K]
+    wtfun = [(d::Real->float(wt[k]*d)) for k = 1:K]
+
+    return GainProfile(γ, γ′, abs2γ, abs2γ′, D₀, wtfun)
+end
+GainProfile(ω₀::AbsVecReal, γperp::AbsVecReal, N::Integer) = (K = length(ω₀); GainProfile(ω₀, γperp, VecFloat(undef,N), fill(1.0/K,K)))  # even distribution
+GainProfile(ω₀::AbsVecReal, γperp::Real, N::Integer) = (K = length(ω₀); GainProfile(ω₀, fill(γperp,K), VecFloat(undef,N), fill(1.0/K,K)))  # even distribution
+
+# Single atomic class
 GainProfile(ω₀::Real, γperp::Real, D₀::AbsVecReal) = GainProfile(gen_γ(ω₀,γperp), gen_γ′(ω₀,γperp), gen_abs2γ(ω₀,γperp), gen_abs2γ′(ω₀,γperp), D₀)
 GainProfile(ω₀::Real, γperp::Real, vtemp::AbsVec) =  GainProfile(gen_γ(ω₀,γperp), gen_γ′(ω₀,γperp), gen_abs2γ(ω₀,γperp), gen_abs2γ′(ω₀,γperp), vtemp::AbsVec)
 GainProfile(ω₀::Real, γperp::Real, N::Integer) = GainProfile(gen_γ(ω₀,γperp), gen_γ′(ω₀,γperp), gen_abs2γ(ω₀,γperp), gen_abs2γ′(ω₀,γperp), N::Integer)
