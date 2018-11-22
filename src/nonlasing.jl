@@ -50,7 +50,10 @@ NonlasingSol(N::Integer, M::Integer) = NonlasingSol(VecFloat(undef,N), M)
 
 Base.length(nlsol::NonlasingSol) = length(nlsol.ψ)
 
-# Note that this function changes iₐ.
+# Note that this function changes iₐ.  Therefore, this must not be called inside the
+# iteration for finding the solution for a given pump strength, because iₐ must be kept the
+# same for a given pump strength in order to solve the equations with the same normalization
+# conditions.
 function LinearAlgebra.normalize!(nlsol::NonlasingSol)
     for m = nlsol.m_active
         ψ = nlsol.ψ[m]
@@ -93,34 +96,13 @@ NonlasingVar(lsd_temp::LinearSolverData, vtemp::AbsVec, M::Integer) = NonlasingV
 NonlasingVar(lsd_temp::LinearSolverData, N::Integer, M::Integer) = NonlasingVar(lsd_temp, VecFloat(undef,N), M)
 
 
-function init_modal_var!(mvar::NonlasingModalVar,
-                         m::Integer,  # index of lasing mode
-                         nlsol::NonlasingSol,
-                         D::AbsVecFloat,  # population inversion
-                         gp::GainProfile,
-                         εc::AbsVecNumber)
-    ω = nlsol.ω[m]
-    ψ = nlsol.ψ[m]
-
-    γ = gp.gain(ω)
-    γ′ = gp.gain′(ω)
-
-    # Below, avoid allocations and use preallocated arrays in mvar.
-    ε = nlsol.vtemp  # temporary storage for effective permitivity: εc + γ D
-    ε .= εc .+ γ .* D
-    # @info "maximum(D) = $(maximum(D)), maximum(|εc|) = $(maximum(abs.(εc)))"
-
-    init_lsd!(mvar.lsd, ω, ε)
-    mvar.∂f∂ω .= (2ω .* εc + (2ω*γ + ω^2*γ′) .* D) .* ψ  # derivative of nonlasing equation function w.r.t. ω
-
-    # Mark mvar as initialized.
+function init_nlvar!(nlvar::NonlasingVar, m::Integer, nlsol::NonlasingSol, D::AbsVec{<:AbsVecFloat}, gp::GainProfile, εc::AbsVecComplex)
+    mvar = nlvar.mvar_vec[m]
+    init_modal_var_impl!(mvar.lsd, mvar.∂f∂ω, nlsol.vtemp, nlsol.ω[m], nlsol.ψ[m], D, gp, εc)  # see lasing.jl
     mvar.inited = true
 
     return nothing
 end
-
-init_nlvar!(nlvar::NonlasingVar, m::Integer, nlsol::NonlasingSol, D::AbsVecFloat, gp::GainProfile, εc::AbsVecComplex) =
-    init_modal_var!(nlvar.mvar_vec[m], m, nlsol, D, gp, εc)
 
 # Unlike norm_leq, this norm_nleq takes the mode index m, because nonlasing mode equations
 # are uncoupled between nonlasing modes.  This asymmetry between norm_leq and norm_lneq may
