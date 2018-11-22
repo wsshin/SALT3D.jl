@@ -1,4 +1,4 @@
-@testset "salteq" begin
+@testset "gain" begin
 
 # Create a system.
 Ngrid = [3,3,3]
@@ -27,8 +27,8 @@ abs2gain′ = gen_abs2γ′(ω₀, γperp)
 @test abs2gain′.(ω) ≈ -2 .* abs2gain.(ω).^2 .* (ω.-ω₀) ./ γperp^2
 
 hb = Vector{Float64}(undef, N)
-hole_burning!(hb, ω, a², ψ, abs2gain)
+hole_burning!(hb, abs2gain, ω, a², [abs2.(ψ[m]) for m = 1:M])
 @test all(hb .> 1)
 @test hb ≈ 1 .+ abs2.(Ψ) * (abs2gain.(ω) .* a²)
 
-end  # @testset "salteq"
+end  # @testset "gain"

@@ -25,52 +25,30 @@ abs2gain′ = gen_abs2γ′(ω₀,γperp)
 ψ = [Ψ[:,j] for j = 1:M]
 iarray = rand(1:N, M)
 vtemp = similar(ψ[1])
-sol = LasingSol(ω, a², ψ, iarray, vtemp)  # ω = rand(M); this is fine because init_reduced_var does not use ω
+sol = LasingSol(ω, a², ψ, [abs2.(ψ[m]) for m = 1:M], iarray, vtemp)  # ω = rand(M); this is fine because init_reduced_var does not use ω
 sol.active = fill(true, M)
 sol.m_active = collect(1:M)
 
-# Create ∆solution.
-∆a² = rand(M)
-∆ω = rand(M)
-∆Ψ = randn(ComplexF64,N,M)
-∆ψ = [∆Ψ[:,j] for j = 1:M]
-∆sol = SALTBase.∆LasingSol(∆ω, ∆a², ∆ψ, vtemp)
-
 # Check reduced variables.
 hb = Vector{Float64}(undef, N)
-hole_burning!(hb, ω, a², ψ, abs2gain)
+hole_burning!(hb, abs2gain, ω, a², [abs2.(ψ[m]) for m = 1:M])
 D = D₀ ./ hb
 D′ = -D₀ ./ abs2.(hb)
-∆D = similar(D)
-SALTBase.∆popinv!(∆D, D′, ∆sol, sol, gp)
-∇ₐ₂D = [zeros(N) for m = 1:M]
-SALTBase.∇ₐ₂popinv!(∇ₐ₂D, D′, sol, gp)
-∇ωD = [zeros(N) for m = 1:M]
-SALTBase.∇ωpopinv!(∇ωD, D′, sol, gp)
-rvar = SALTBase.LasingReducedVar(N, M)
-SALTBase.init_reduced_var!(rvar, ∆sol, sol, gp)
+rvar = SALTBase.LasingReducedVar(N, 1)  # K = 1
+SALTBase.init_reduced_var!(rvar, sol, gp)
 @testset "reduced variables" begin
-    @test rvar.D ≈ D
-    @test rvar.D′ ≈ D′
-    @test ∆D ≈ D′ .* (real.(conj.(Ψ) .* ∆Ψ) * (2 .* a² .* abs2gain.(ω)))
-    @test rvar.∆D ≈ ∆D
-    ∇ₐ₂D_mat = D′ .* (abs2.(Ψ) .* abs2gain.(ω)')
-    @test ∇ₐ₂D ≈ [∇ₐ₂D_mat[:,j] for j = 1:M]
-    @test rvar.∇ₐ₂D ≈ ∇ₐ₂D
-    ∇ωD_mat = D′ .* (abs2.(Ψ) .* (a² .* abs2gain′.(ω))')
-    @test ∇ωD ≈ [∇ωD_mat[:,j] for j = 1:M]
-    @test rvar.∇ωD ≈ ∇ωD
+    @test rvar.D[1] ≈ D
+    @test rvar.D′[1] ≈ D′
 end
 
 
 mvar = SALTBase.LasingModalVar(DefaultLSD(), N)
-SALTBase.init_modal_var!(mvar, m, sol, rvar, gp, εc)
+SALTBase.init_modal_var!(mvar, m, sol, rvar.D, gp, εc)
 
 γ = gen_γ(ω₀, γperp)(ωₘ)
 γ′ = gen_γ′(ω₀, γperp)(ωₘ)
 ε = εc + γ*D
 @testset "modal variables" begin
-    @test mvar.ω²γψ ≈ (ωₘ^2 * γ) .* ψ[m]
     @test mvar.∂f∂ω ≈ (2ωₘ*ε + ωₘ^2*γ′*D) .* ψ[m]
 end
 
