@@ -119,8 +119,6 @@ LasingReducedVar(D::AbsVec{<:AbsVecReal}, D′::AbsVec{<:AbsVecReal}) = LasingRe
 LasingReducedVar(vtemp::AbsVec, K::Integer) = LasingReducedVar([similar(vtemp,Float).=0 for k=1:K], [similar(vtemp,Float).=0 for k=1:K])  # vtemp has N entries
 LasingReducedVar(N::Integer, K::Integer) =  LasingReducedVar(VecFloat(undef,N), K)
 
-LasingReducedVar(vtemp::AbsVec) = LasingReducedVar(vtemp, 1)  # K = 1
-LasingReducedVar(N::Integer) =  LasingReducedVar(N, 1)  # K = 1
 
 # Initialize the variables that are NOT specific to a specific lasing mode.  These variables
 # are constructed by summing up the contributions from all lasing modes.
@@ -225,9 +223,9 @@ mutable struct LasingVar{LSD<:LinearSolverData,VF<:AbsVecFloat,VC<:AbsVecComplex
     cst::LasingConstraint
     inited::Bool
 end
-LasingVar(lsd_temp::LinearSolverData, vtemp::AbsVec, M::Integer) =
-    LasingVar(LasingReducedVar(vtemp), [LasingModalVar(lsd_temp, vtemp) for m = 1:M], LasingConstraint(M), false)
-LasingVar(lsd_temp::LinearSolverData, N::Integer, M::Integer) = LasingVar(lsd_temp, VecFloat(undef,N), M)
+LasingVar(lsd_temp::LinearSolverData, vtemp::AbsVec, K::Integer, M::Integer) =  # K: number of atomic classes, M: number of modes
+    LasingVar(LasingReducedVar(vtemp, K), [LasingModalVar(lsd_temp, vtemp) for m = 1:M], LasingConstraint(M), false)
+LasingVar(lsd_temp::LinearSolverData, N::Integer, K::Integer, M::Integer) = LasingVar(lsd_temp, VecFloat(undef,N), K, M)
 
 
 function init_lvar!(lvar::LasingVar, lsol::LasingSol, gp::GainProfile, εc::AbsVecComplex)
