@@ -37,7 +37,7 @@ mutable struct LasingSol{VF<:AbsVecFloat,VC<:AbsVecComplex}  # VF and VC can be 
     ω::VecFloat  # M real numbers: frequencies of modes (M = # of total modes, including both lasing and nonlasing)
     a²::VecFloat  # M real numbers: squared "amplitudes" of modes inside hole-burning term; this includes γ(ω)² factor
     ψ::Vector{VC}  # M complex vectors: normalized modes
-    abs2ψ::Vector{VF}  # M complex vectors: absolute squares of normalized modes
+    abs2ψ::Vector{VF}  # M complex vectors: absolute squares of normalized modes; this is not abs2.(ψ) because of interpolation
     iₐ::VecInt  # M integers: row indices where amplitudes are measured
     vtemp::VC  # temporary storage for N complex numbers
     wtemp::VC  # temporary storage for N complex numbers

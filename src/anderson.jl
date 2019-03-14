@@ -22,6 +22,7 @@ function lsol2rvec(lsol::LasingSol)
     # return CatView(lsol.ω[lsol.m_active], lsol.a²[lsol.m_active])
 end
 
+# Create the fixed-point function to use in the Anderson acceleration.
 function create_fpfun(lsol::LasingSol, lvar::LasingVar, gp::GainProfile)
     # When x is created from lsol by lsol2rvec, x points to the memory of lsol, so the update in
     # lsol is automatically reflected in x.

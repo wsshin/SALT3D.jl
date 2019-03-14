@@ -22,12 +22,12 @@ function solve_leq!(lsol, lvar, gp, εc; m=M_ANDERSON, τr=TR_ANDERSON, τa=TA_A
     # Construct the objects to use in the Anderson acceleration.
     x = lsol2rvec(lsol)
 
-    # fpfun! and normfun! do not have to be created for every d value, so the following two lines
-    # can be moved into solve_salt!.  (Note, however, that lsol2rvec needs to be called for every d,
-    # becaue x needs to change with lsol.m_active.)
+    # fpfun! and normfun! do not have to be created for every d value, so the following two
+    # lines can be moved into solve_salt!.  (Note, however, that lsol2rvec needs to be
+    # called for every d, becaue x needs to change with lsol.m_active.)
     #
-    # Still, I will leave the creation of fpfun! and normfun! here, because that leaves the function
-    # signatures of solve_leq! and solve_nleq! similar.
+    # Still, I will leave the creation of fpfun! and normfun! here, because that leaves the
+    # function signatures of solve_leq! and solve_nleq! similar.
     fpfun! = create_fpfun(lsol, lvar, gp)
     normfun! = create_normfun(lsol, lvar, gp, εc, verbose=verbose)
 
