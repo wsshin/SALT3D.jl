@@ -44,7 +44,7 @@ function create_normfun(lsol::LasingSol, lvar::LasingVar, gp::GainProfile, εc::
         init_lvar!(lvar, lsol, gp, εc)
         lleq = norm_leq(lsol, lvar, gp)
         if verbose
-            k==0 ? println(msgprefix * "Initial residual norm: ‖leq₀‖ = $lleq₀") :
+            k==0 ? println(msgprefix * "Initial residual norm: ‖leq₀‖ = $lleq") :
                    println(msgprefix * "k = $k: ‖leq‖/‖leq₀‖ = $(lleq/lleq₀)")
         end
 
