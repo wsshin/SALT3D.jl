@@ -264,41 +264,45 @@ function simulate!(lsol::LasingSol, lvar::LasingVar,
     tAA = zeros(nout)  # time taken for Anderson acceleration
 
     println("\nStart SALT simulation.")
-    cout = 1  # index of doutvec
-    for d = dvec
-        n_anderson, t_anderson =
-            solve_salt!(lsol, lvar, nlsol, nlvar, gp, εc, d, setD₀!,
-                        τr_newton=τr_newton, τa_newton=τa_newton, maxit_newton=maxit_newton,
-                        m_anderson=m_anderson, τr_anderson=τr_anderson, τa_anderson=τa_anderson, maxit_anderson=maxit_anderson,
-                        verbose=verbose)
+    t_tot = @elapsed begin
+        cout = 1  # index of doutvec
+        for d = dvec
+            n_anderson, t_anderson =
+                solve_salt!(lsol, lvar, nlsol, nlvar, gp, εc, d, setD₀!,
+                            τr_newton=τr_newton, τa_newton=τa_newton, maxit_newton=maxit_newton,
+                            m_anderson=m_anderson, τr_anderson=τr_anderson, τa_anderson=τa_anderson, maxit_anderson=maxit_anderson,
+                            verbose=verbose)
 
-        # Output results for current d.
-        if d == doutvec[cout]
-            nAA[cout] = n_anderson
-            tAA[cout] = t_anderson
+            # Output results for current d.
+            if d == doutvec[cout]
+                nAA[cout] = n_anderson
+                tAA[cout] = t_anderson
 
-            # Output the lasing modes.
-            m_active = lsol.m_active
-            outω && (ωout[m_active,cout] .= lsol.ω[m_active])
-            outa && (aout[m_active,cout] .= .√lsol.a²[m_active])
-            if outψ
-                for m = m_active
-                    ψout[m,cout,:] .= lsol.ψ[m]
+                # Output the lasing modes.
+                m_active = lsol.m_active
+                outω && (ωout[m_active,cout] .= lsol.ω[m_active])
+                outa && (aout[m_active,cout] .= .√lsol.a²[m_active])
+                if outψ
+                    for m = m_active
+                        ψout[m,cout,:] .= lsol.ψ[m]
+                    end
                 end
-            end
 
-            # Output nonlasing modes.
-            m_active = nlsol.m_active  # this does not conflict with lsol.m_active, because check_conflict() passed
-            outω && (ωout[m_active,cout] .= nlsol.ω[m_active])
-            if outψ
-                for m = m_active
-                    ψout[m,cout,:] .= nlsol.ψ[m]
+                # Output nonlasing modes.
+                m_active = nlsol.m_active  # this does not conflict with lsol.m_active, because check_conflict() passed
+                outω && (ωout[m_active,cout] .= nlsol.ω[m_active])
+                if outψ
+                    for m = m_active
+                        ψout[m,cout,:] .= nlsol.ψ[m]
+                    end
                 end
-            end
 
-            cout += 1
+                cout += 1
+            end
         end
     end
+    println("\nEnd SALT simulation.")
+    println("Total simulation time: $t_tot seconds.")
 
     return ωout, aout, ψout, nAA, tAA
 end
