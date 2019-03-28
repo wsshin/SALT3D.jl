@@ -53,12 +53,13 @@ abstract type LinearSolverData end
 # - similar(lsd:LinearSolverData)
 # - size(lsd::LinearSolverData)
 
-# Each concrete SALT solver package (e.g., MaxwellSALT) must extend the following functions
-# to be used in lasing.jl and nonlasing.jl:
-function init_lsd!(lsd::LinearSolverData, ω::Number, ε::AbsVecNumber) end
-function linsolve!(x::AbsVecComplex, lsd::LinearSolverData, b::AbsVecNumber) end
-function linsolve_transpose!(x::AbsVecComplex, lsd::LinearSolverData, b::AbsVecNumber) end
-function linapply!(b::AbsVecComplex, lsd::LinearSolverData, x::AbsVecNumber) end
+# Each concrete SALT solver package (e.g., MaxwellSALT) must implement a concrete subtype of
+# LinearSolverData and extend the following functions to be used in lasing.jl and nonlasing.jl:
+function init_lsd!(lsd::LinearSolverData, ω::Number, ε::AbsVecNumber) end  # initialize lsd for current ω and ε
+function linsolve!(x::AbsVecComplex, lsd::LinearSolverData, b::AbsVecNumber) end  # x = A⁻¹ b
+function linsolve_transpose!(x::AbsVecComplex, lsd::LinearSolverData, b::AbsVecNumber) end  # x = A⁻ᵀ b
+function linapply!(b::AbsVecComplex, lsd::LinearSolverData, x::AbsVecNumber) end  # b = A x
+function abs2_interp!(abs2ψ::AbsVecReal, lsd::LinearSolverData, ψ::AbsVecNumber) end  # abs2ψ = abs2.(interpolate(ψ))
 
 include("base.jl")
 include("gain.jl")
