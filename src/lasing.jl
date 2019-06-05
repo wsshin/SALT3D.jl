@@ -232,6 +232,7 @@ function init_lvar!(lvar::LasingVar, lsol::LasingSol, gp::GainProfile, εc::AbsV
     # Update abs2ψ.
     for m = lsol.m_active
         abs2_interp!(lsol.abs2ψ[m], mvar_vec[m].lsd, lsol.ψ[m])
+        # lsol.abs2ψ[m] .= abs2.(lsol.ψ[m])
     end
 
     init_reduced_var!(rvar, lsol, gp)
@@ -482,9 +483,9 @@ function update_lsol_impl!(lsol::LasingSol,
     end
 
     # Calculate ∆ω and ∆a.
+    # @info "A = $(A[1:2L,1:2L]), b = $(b[1:2L]), ∆ωa² = $(∆ωa²[1:2L])"
     LU = lu!(@view(A[1:2L,1:2L]))
     ldiv!(@view(∆ωa²[1:2L]), LU, @view(b[1:2L]))
-    # @info "A = $(A[1:2L,1:2L]), b = $(b[1:2L]), ∆ωa² = $(∆ωa²[1:2L])"
 
     # Update ψ.
     # @info "lsol.ω = $(lsol.ω), lsol.a² = $(lsol.a²), lsol.m_active = $(lsol.m_active)"
